@@ -189,19 +189,23 @@ export class TaxonomyService {
 
   /**
    * Parses SharePoint v2.1 terms payload into strongly typed ITermStoreTag objects with synonyms.
+   * Preserves parentId and nested children structure.
    */
   private static _parseTermsArray(
     rawTerms: Array<{
       id: string;
       labels?: Array<{ name: string; isDefault?: boolean; languageTag?: string }>;
       children?: Array<any>;
+      parent?: { id: string };
+      relations?: Array<{ type: string; id: string }>;
     }>,
     setId: string,
     setName: string,
     groupName: string,
-    parentPath?: string
+    parentPath?: string,
+    parentTermId?: string
   ): ITermStoreTag[] {
-    const result: ITermStoreTag[] = [];
+    const rawList: ITermStoreTag[] = [];
 
     rawTerms.forEach((t) => {
       let primaryLabel = 'Term';
@@ -222,23 +226,114 @@ export class TaxonomyService {
         ? `${parentPath} > ${primaryLabel}`
         : `${groupName} > ${setName} > ${primaryLabel}`;
 
-      result.push({
+      const directParentId = t.parent?.id || parentTermId;
+
+      const parsedTerm: ITermStoreTag = {
         id: t.id,
         label: primaryLabel,
         termSetId: setId,
         termSetName: setName,
         path: currentPath,
-        synonyms: synonyms.length > 0 ? synonyms : undefined
-      });
+        synonyms: synonyms.length > 0 ? synonyms : undefined,
+        parentId: directParentId,
+        children: []
+      };
 
       // Parse nested child terms if returned inline
       if (Array.isArray(t.children) && t.children.length > 0) {
-        const children = TaxonomyService._parseTermsArray(t.children, setId, setName, groupName, currentPath);
-        result.push(...children);
+        parsedTerm.children = TaxonomyService._parseTermsArray(t.children, setId, setName, groupName, currentPath, t.id);
+      }
+
+      rawList.push(parsedTerm);
+    });
+
+    // If terms came in as a flat list with parent references, assemble them into a nested tree
+    return TaxonomyService.organizeTermsIntoTree(rawList);
+  }
+
+  /**
+   * Organises a list of terms into a hierarchical tree based on parentId or path structure.
+   */
+  public static organizeTermsIntoTree(terms: ITermStoreTag[]): ITermStoreTag[] {
+    if (!terms || terms.length === 0) return [];
+
+    // Check if terms are already hierarchical (i.e. roots with non-empty children)
+    const hasInlineChildren = terms.some((t) => Array.isArray(t.children) && t.children.length > 0);
+    const hasParentIds = terms.some((t) => !!t.parentId);
+
+    if (hasInlineChildren && !hasParentIds) {
+      return terms;
+    }
+
+    const termMap = new Map<string, ITermStoreTag>();
+    terms.forEach((t) => {
+      // Clone so we don't mutate references unexpectedly
+      termMap.set(t.id, {
+        ...t,
+        children: Array.isArray(t.children) ? [...t.children] : []
+      });
+    });
+
+    const rootTerms: ITermStoreTag[] = [];
+
+    // First pass: Link child to parent by parentId
+    if (hasParentIds) {
+      termMap.forEach((term) => {
+        if (term.parentId && termMap.has(term.parentId)) {
+          const parent = termMap.get(term.parentId)!;
+          if (!parent.children) {
+            parent.children = [];
+          }
+          // Avoid duplicate insertions
+          if (!parent.children.some((c) => c.id === term.id)) {
+            parent.children.push(term);
+          }
+        } else {
+          rootTerms.push(term);
+        }
+      });
+      return rootTerms;
+    }
+
+    // Second pass: If parentId is not present, check path depth (e.g. "Group > Set > Parent > Child")
+    const termsByDepth = Array.from(termMap.values()).sort((a, b) => {
+      const depthA = (a.path || '').split(' > ').length;
+      const depthB = (b.path || '').split(' > ').length;
+      return depthA - depthB;
+    });
+
+    // If all terms have the same depth (e.g. depth 3), return as-is
+    const minDepth = termsByDepth.length > 0 ? (termsByDepth[0].path || '').split(' > ').length : 0;
+    const maxDepth = termsByDepth.length > 0 ? (termsByDepth[termsByDepth.length - 1].path || '').split(' > ').length : 0;
+
+    if (minDepth === maxDepth) {
+      return termsByDepth;
+    }
+
+    // Link by matching path prefixes
+    const assembledRoots: ITermStoreTag[] = [];
+    termsByDepth.forEach((term) => {
+      const segments = (term.path || '').split(' > ');
+      if (segments.length <= minDepth) {
+        assembledRoots.push(term);
+      } else {
+        // Find immediate parent by path (all segments except last)
+        const parentPath = segments.slice(0, -1).join(' > ');
+        const parentTerm = Array.from(termMap.values()).find((p) => p.path === parentPath);
+        if (parentTerm) {
+          if (!parentTerm.children) {
+            parentTerm.children = [];
+          }
+          if (!parentTerm.children.some((c) => c.id === term.id)) {
+            parentTerm.children.push(term);
+          }
+        } else {
+          assembledRoots.push(term);
+        }
       }
     });
 
-    return result;
+    return assembledRoots;
   }
 
   /**
@@ -247,6 +342,23 @@ export class TaxonomyService {
   public static async getTermGroups(siteUrl?: string): Promise<ITermGroup[]> {
     await this.initializeFromSharePoint(siteUrl);
     return this._cachedGroups;
+  }
+
+  /**
+   * Helper to recursively collect all terms and their descendants into a flat list.
+   */
+  public static flattenTerms(terms: ITermStoreTag[]): ITermStoreTag[] {
+    const list: ITermStoreTag[] = [];
+    const recurse = (arr: ITermStoreTag[]): void => {
+      arr.forEach((t) => {
+        list.push(t);
+        if (Array.isArray(t.children) && t.children.length > 0) {
+          recurse(t.children);
+        }
+      });
+    };
+    recurse(terms);
+    return list;
   }
 
   /**
@@ -260,7 +372,8 @@ export class TaxonomyService {
 
     this._cachedGroups.forEach((g) => {
       g.termSets.forEach((s) => {
-        s.terms.forEach((t) => {
+        const flatSetTerms = TaxonomyService.flattenTerms(s.terms);
+        flatSetTerms.forEach((t) => {
           if (!seenIds.has(t.id)) {
             seenIds.add(t.id);
             allTerms.push(t);
@@ -306,7 +419,7 @@ export class TaxonomyService {
   }
 
   /**
-   * Fetches all terms in a given term set by name (case-insensitive) or set ID.
+   * Fetches all terms in a given term set by name (case-insensitive) or set ID (including all descendants).
    */
   public static async getTermsByTermSet(termSetName: string, siteUrl?: string): Promise<ITermStoreTag[]> {
     await this.initializeFromSharePoint(siteUrl);
@@ -316,7 +429,7 @@ export class TaxonomyService {
     this._cachedGroups.forEach((g) => {
       g.termSets.forEach((s) => {
         if (s.name.toLowerCase() === target || s.id.toLowerCase() === target) {
-          matches.push(...s.terms);
+          matches.push(...TaxonomyService.flattenTerms(s.terms));
         }
       });
     });

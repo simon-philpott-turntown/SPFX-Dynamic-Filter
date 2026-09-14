@@ -65,6 +65,7 @@ const TermPickerControl: React.FC<IPropertyPaneTermPickerFieldProps> = ({
   const [allTerms, setAllTerms] = React.useState<ITermStoreTag[]>([]);
   const [expandedGroups, setExpandedGroups] = React.useState<Record<string, boolean>>({});
   const [expandedSets, setExpandedSets] = React.useState<Record<string, boolean>>({});
+  const [expandedTerms, setExpandedTerms] = React.useState<Record<string, boolean>>({});
   const [selectedTarget, setSelectedTarget] = React.useState<{ name: string; tag?: ITermStoreTag } | null>(null);
   const [searchQuery, setSearchQuery] = React.useState<string>('');
   const [isLoading, setIsLoading] = React.useState<boolean>(false);
@@ -88,6 +89,8 @@ const TermPickerControl: React.FC<IPropertyPaneTermPickerFieldProps> = ({
           // Expand all groups by default so users see their term sets immediately
           const initialExpandedGroups: Record<string, boolean> = {};
           const initialExpandedSets: Record<string, boolean> = {};
+          const initialExpandedTerms: Record<string, boolean> = {};
+
           groups.forEach((g) => {
             initialExpandedGroups[g.id] = true;
             if (Array.isArray(g.termSets)) {
@@ -96,6 +99,7 @@ const TermPickerControl: React.FC<IPropertyPaneTermPickerFieldProps> = ({
                   s.name.toLowerCase() === 'our teams' ||
                   s.name.toLowerCase() === 'our sectors' ||
                   s.name.toLowerCase() === 'our capabilities' ||
+                  s.name.toLowerCase() === 'our business' ||
                   (selectedTermName && (s.name.toLowerCase() === selectedTermName.toLowerCase() || s.terms.some((t) => t.label.toLowerCase() === selectedTermName.toLowerCase())))
                 ) {
                   initialExpandedSets[s.id] = true;
@@ -103,8 +107,28 @@ const TermPickerControl: React.FC<IPropertyPaneTermPickerFieldProps> = ({
               });
             }
           });
+
+          // Auto-expand any top-level parent term if the selected term is a child or matches
+          if (selectedTermName) {
+            const targetLower = selectedTermName.toLowerCase();
+            const findAndExpandParents = (tags: ITermStoreTag[]): void => {
+              tags.forEach((t) => {
+                if (Array.isArray(t.children) && t.children.length > 0) {
+                  const hasMatchingDescendant = (arr: ITermStoreTag[]): boolean =>
+                    arr.some((c) => c.label.toLowerCase() === targetLower || (Array.isArray(c.children) && hasMatchingDescendant(c.children)));
+                  if (t.label.toLowerCase() === targetLower || hasMatchingDescendant(t.children)) {
+                    initialExpandedTerms[t.id] = true;
+                  }
+                  findAndExpandParents(t.children);
+                }
+              });
+            };
+            groups.forEach((g) => g.termSets.forEach((s) => findAndExpandParents(s.terms)));
+          }
+
           setExpandedGroups(initialExpandedGroups);
           setExpandedSets(initialExpandedSets);
+          setExpandedTerms(initialExpandedTerms);
           setIsLoading(false);
         })
         .catch(() => {
@@ -137,6 +161,134 @@ const TermPickerControl: React.FC<IPropertyPaneTermPickerFieldProps> = ({
         [setId]: !current
       };
     });
+  };
+
+  const toggleTermExpansion = (termId: string, e?: React.MouseEvent): void => {
+    if (e) {
+      e.stopPropagation();
+    }
+    setExpandedTerms((prev) => ({
+      ...prev,
+      [termId]: !prev[termId]
+    }));
+  };
+
+  /**
+   * Recursively renders a term node with expandable chevron, label, synonyms, and selection state.
+   */
+  const renderTermNode = (term: ITermStoreTag, depth: number = 0): React.ReactNode => {
+    const isTermSelected = selectedTarget?.name === term.label;
+    const hasChildren = Array.isArray(term.children) && term.children.length > 0;
+    const isTermExpanded = expandedTerms[term.id] !== undefined ? expandedTerms[term.id] : false;
+
+    return (
+      <div key={term.id} style={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '6px 10px',
+            paddingLeft: `${10 + depth * 18}px`,
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontSize: '12px',
+            backgroundColor: isTermSelected ? '#eff6fc' : '#ffffff',
+            border: isTermSelected ? '1px solid #0078d4' : '1px solid #f3f2f1',
+            transition: 'all 0.15s ease'
+          }}
+          onMouseEnter={(e) => {
+            if (!isTermSelected) e.currentTarget.style.backgroundColor = '#f3f9fd';
+          }}
+          onMouseLeave={(e) => {
+            if (!isTermSelected) e.currentTarget.style.backgroundColor = '#ffffff';
+          }}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (hasChildren) {
+              toggleTermExpansion(term.id);
+            }
+            setSelectedTarget({ name: term.label, tag: term });
+          }}
+          onDoubleClick={() => handlePickTerm(term.label, term)}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, overflow: 'hidden' }}>
+            {hasChildren ? (
+              <span
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleTermExpansion(term.id, e);
+                }}
+                style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer', padding: '2px' }}
+              >
+                {isTermExpanded ? (
+                  <ChevronDownRegular style={{ fontSize: '12px', color: '#0078d4' }} />
+                ) : (
+                  <ChevronRightRegular style={{ fontSize: '12px', color: '#605e5c' }} />
+                )}
+              </span>
+            ) : (
+              <span style={{ width: '14px', display: 'inline-block' }} />
+            )}
+
+            <TagRegular style={{ color: hasChildren ? '#0078d4' : '#605e5c', fontSize: '14px', flexShrink: 0 }} />
+
+            <span
+              style={{
+                fontWeight: hasChildren ? 600 : 500,
+                color: isTermSelected ? '#004578' : '#201f1e',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis'
+              }}
+            >
+              {term.label} {hasChildren ? `(${term.children!.length})` : ''}
+            </span>
+
+            {Array.isArray(term.synonyms) && term.synonyms.length > 0 && (
+              <span
+                style={{
+                  fontSize: '11px',
+                  color: '#605e5c',
+                  marginLeft: '4px',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis'
+                }}
+              >
+                ({term.synonyms.join(', ')})
+              </span>
+            )}
+          </div>
+
+          <span
+            style={{
+              fontSize: '11px',
+              padding: '2px 8px',
+              borderRadius: '4px',
+              backgroundColor: isTermSelected ? '#0078d4' : '#f3f2f1',
+              color: isTermSelected ? '#ffffff' : '#605e5c',
+              fontWeight: 500,
+              flexShrink: 0,
+              marginLeft: '8px'
+            }}
+            onClick={(e) => {
+              e.stopPropagation();
+              setSelectedTarget({ name: term.label, tag: term });
+            }}
+          >
+            {isTermSelected ? 'Selected' : 'Select'}
+          </span>
+        </div>
+
+        {/* Recursive Children Container */}
+        {hasChildren && isTermExpanded && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', marginTop: '2px' }}>
+            {term.children!.map((child) => renderTermNode(child, depth + 1))}
+          </div>
+        )}
+      </div>
+    );
   };
 
   const handlePickTerm = (name: string, tag?: ITermStoreTag): void => {
@@ -498,7 +650,7 @@ const TermPickerControl: React.FC<IPropertyPaneTermPickerFieldProps> = ({
                                           userSelect: 'none'
                                         }}
                                       >
-                                        {set.name} ({set.terms ? set.terms.length : 0})
+                                        {set.name} ({TaxonomyService.flattenTerms(set.terms).length})
                                       </span>
                                     </div>
 
@@ -521,64 +673,11 @@ const TermPickerControl: React.FC<IPropertyPaneTermPickerFieldProps> = ({
                                     </span>
                                   </div>
 
-                                  {/* Terms inside Term Set */}
+                                  {/* Terms inside Term Set (Hierarchical Tree) */}
                                   {isExpanded && (
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', marginLeft: '16px', marginTop: '3px' }}>
                                       {hasTerms ? (
-                                        set.terms.map((term) => {
-                                          const isTermSelected = selectedTarget?.name === term.label;
-                                          return (
-                                            <div
-                                              key={term.id}
-                                              style={{
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                justifyContent: 'space-between',
-                                                padding: '6px 10px',
-                                                borderRadius: '4px',
-                                                cursor: 'pointer',
-                                                fontSize: '12px',
-                                                backgroundColor: isTermSelected ? '#eff6fc' : '#ffffff',
-                                                border: isTermSelected ? '1px solid #0078d4' : '1px solid #f3f2f1',
-                                                transition: 'all 0.15s ease'
-                                              }}
-                                              onMouseEnter={(e) => {
-                                                if (!isTermSelected) e.currentTarget.style.backgroundColor = '#f3f9fd';
-                                              }}
-                                              onMouseLeave={(e) => {
-                                                if (!isTermSelected) e.currentTarget.style.backgroundColor = '#ffffff';
-                                              }}
-                                              onClick={(e) => {
-                                                e.stopPropagation();
-                                                setSelectedTarget({ name: term.label, tag: term });
-                                              }}
-                                              onDoubleClick={() => handlePickTerm(term.label, term)}
-                                            >
-                                              <div>
-                                                <span style={{ fontWeight: 600, color: isTermSelected ? '#004578' : '#201f1e' }}>
-                                                  🏷️ {term.label}
-                                                </span>
-                                                {Array.isArray(term.synonyms) && term.synonyms.length > 0 && (
-                                                  <span style={{ fontSize: '11px', color: '#605e5c', marginLeft: '8px' }}>
-                                                    ({term.synonyms.join(', ')})
-                                                  </span>
-                                                )}
-                                              </div>
-                                              <span
-                                                style={{
-                                                  fontSize: '11px',
-                                                  padding: '2px 8px',
-                                                  borderRadius: '4px',
-                                                  backgroundColor: isTermSelected ? '#0078d4' : '#f3f2f1',
-                                                  color: isTermSelected ? '#ffffff' : '#605e5c',
-                                                  fontWeight: 500
-                                                }}
-                                              >
-                                                {isTermSelected ? 'Selected' : 'Select'}
-                                              </span>
-                                            </div>
-                                          );
-                                        })
+                                        set.terms.map((term) => renderTermNode(term, 0))
                                       ) : (
                                         <div style={{ padding: '6px 10px', fontSize: '11px', color: '#8a8886', fontStyle: 'italic' }}>
                                           No terms in this term set
