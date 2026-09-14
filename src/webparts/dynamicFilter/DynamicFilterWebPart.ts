@@ -283,8 +283,15 @@ export default class DynamicFilterWebPart
       isSiteAdmin
     };
 
-    // Pre-seed taxonomy service
-    void TaxonomyService.initializeFromSharePoint(this.context?.pageContext?.web?.absoluteUrl);
+    // Pre-seed taxonomy service and resolve synonyms as soon as live taxonomy is ready
+    void TaxonomyService.initializeFromSharePoint(this.context?.pageContext?.web?.absoluteUrl)
+      .then(async () => {
+        await this._resolveAllSynonyms();
+        this.render();
+      })
+      .catch((taxErr) => {
+        console.warn('[DynamicFilterWebPart] Taxonomy pre-seed error (non-fatal):', taxErr);
+      });
 
     // Harvest user profile details & avatar photo in background (non-blocking).
     void UserProfileHarvesterService.harvest(this.context)

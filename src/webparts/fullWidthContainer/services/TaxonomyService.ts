@@ -61,7 +61,7 @@ export class TaxonomyService {
         };
 
         // Step 1: Query all term groups with sets expanded
-        const groupsEndpoint = `${targetUrl}/_api/v2.1/termStore/groups?$expand=sets($expand=terms)`;
+        const groupsEndpoint = `${targetUrl}/_api/v2.1/termStore/groups?$expand=sets`;
         const groupsResp = await fetch(groupsEndpoint, {
           headers,
           credentials: 'include'
@@ -86,60 +86,39 @@ export class TaxonomyService {
           sets?: Array<{
             id: string;
             localizedNames?: Array<{ name: string }>;
-            terms?: Array<{
-              id: string;
-              labels?: Array<{ name: string; isDefault?: boolean; languageTag?: string }>;
-            }>;
           }>;
         }>) {
           const groupName = g.displayName || g.name || 'Group';
           let termSets: ITermSet[] = [];
 
-          // If sets came pre-expanded
-          if (Array.isArray(g.sets) && g.sets.length > 0) {
-            for (const s of g.sets) {
-              const setName = s.localizedNames && s.localizedNames[0] ? s.localizedNames[0].name : 'Term Set';
-              let terms: ITermStoreTag[] = [];
-
-              if (Array.isArray(s.terms) && s.terms.length > 0) {
-                terms = TaxonomyService._parseTermsArray(s.terms, s.id, setName, groupName);
-              } else {
-                // Query terms for this set individually
-                terms = await TaxonomyService._fetchTermsForSet(targetUrl, s.id, setName, groupName, headers);
-              }
-
-              termSets.push({
-                id: s.id,
-                name: setName,
-                groupId: g.id,
-                groupName: groupName,
-                terms: terms
-              });
-            }
-          } else {
-            // Query sets for this group directly if not expanded inline
+          // Query sets for this group
+          let setsList = Array.isArray(g.sets) && g.sets.length > 0 ? g.sets : [];
+          if (setsList.length === 0) {
             try {
               const setsEndpoint = `${targetUrl}/_api/v2.1/termStore/groups/${g.id}/sets`;
               const setsResp = await fetch(setsEndpoint, { headers, credentials: 'include' });
               if (setsResp.ok) {
                 const setsData = await setsResp.json();
                 if (setsData && Array.isArray(setsData.value)) {
-                  for (const s of setsData.value as Array<{ id: string; localizedNames?: Array<{ name: string }> }>) {
-                    const setName = s.localizedNames && s.localizedNames[0] ? s.localizedNames[0].name : 'Term Set';
-                    const terms = await TaxonomyService._fetchTermsForSet(targetUrl, s.id, setName, groupName, headers);
-                    termSets.push({
-                      id: s.id,
-                      name: setName,
-                      groupId: g.id,
-                      groupName: groupName,
-                      terms: terms
-                    });
-                  }
+                  setsList = setsData.value;
                 }
               }
             } catch (setErr) {
               console.warn(`[TaxonomyService] Error fetching sets for group ${groupName}:`, setErr);
             }
+          }
+
+          for (const s of setsList) {
+            const setName = s.localizedNames && s.localizedNames[0] ? s.localizedNames[0].name : 'Term Set';
+            // Always fetch terms for set with expand=relations,children to capture full hierarchy and parent IDs
+            const terms = await TaxonomyService._fetchTermsForSet(targetUrl, s.id, setName, groupName, headers);
+            termSets.push({
+              id: s.id,
+              name: setName,
+              groupId: g.id,
+              groupName: groupName,
+              terms: terms
+            });
           }
 
           liveGroups.push({
@@ -164,6 +143,7 @@ export class TaxonomyService {
 
   /**
    * Helper to fetch terms for a specific Term Set directly from SharePoint.
+   * In SharePoint Online REST v2.1, /terms returns root terms or flat terms with parent relationships.
    */
   private static async _fetchTermsForSet(
     targetUrl: string,
@@ -173,7 +153,8 @@ export class TaxonomyService {
     headers: Record<string, string>
   ): Promise<ITermStoreTag[]> {
     try {
-      const termsEndpoint = `${targetUrl}/_api/v2.1/termStore/sets/${setId}/terms`;
+      // Query terms with relations expanded so parent/child links are explicitly available
+      const termsEndpoint = `${targetUrl}/_api/v2.1/termStore/sets/${setId}/terms?$expand=relations,children`;
       const resp = await fetch(termsEndpoint, { headers, credentials: 'include' });
       if (resp.ok) {
         const data = await resp.json();
@@ -189,7 +170,7 @@ export class TaxonomyService {
 
   /**
    * Parses SharePoint v2.1 terms payload into strongly typed ITermStoreTag objects with synonyms.
-   * Preserves parentId and nested children structure.
+   * Preserves parentId from parent property, relations, or parentTermId.
    */
   private static _parseTermsArray(
     rawTerms: Array<{
@@ -197,7 +178,7 @@ export class TaxonomyService {
       labels?: Array<{ name: string; isDefault?: boolean; languageTag?: string }>;
       children?: Array<any>;
       parent?: { id: string };
-      relations?: Array<{ type: string; id: string }>;
+      relations?: Array<{ relationType?: string; type?: string; targetId?: string; fromTerm?: { id: string }; toTerm?: { id: string } }>;
     }>,
     setId: string,
     setName: string,
@@ -226,7 +207,17 @@ export class TaxonomyService {
         ? `${parentPath} > ${primaryLabel}`
         : `${groupName} > ${setName} > ${primaryLabel}`;
 
-      const directParentId = t.parent?.id || parentTermId;
+      // Extract parent ID from t.parent, relations array, or passed parentTermId
+      let directParentId = t.parent?.id || parentTermId;
+      if (!directParentId && Array.isArray(t.relations)) {
+        for (const rel of t.relations) {
+          // In v2.1 relations: relationType 'parent' or targetId or fromTerm
+          if (rel.relationType === 'parent' || rel.type === 'parent') {
+            directParentId = rel.targetId || rel.fromTerm?.id || rel.toTerm?.id;
+            break;
+          }
+        }
+      }
 
       const parsedTerm: ITermStoreTag = {
         id: t.id,
@@ -247,7 +238,7 @@ export class TaxonomyService {
       rawList.push(parsedTerm);
     });
 
-    // If terms came in as a flat list with parent references, assemble them into a nested tree
+    // Assemble flat list into a hierarchical tree based on parentId and relations
     return TaxonomyService.organizeTermsIntoTree(rawList);
   }
 
@@ -479,30 +470,16 @@ export class TaxonomyService {
     const trimmedVal = rawValue.trim().toLowerCase();
     await this.initializeFromSharePoint(siteUrl);
 
-    // 1. Try finding terms by Term Set name or id
-    const setTerms = await this.getTermsByTermSet(termSetNameOrTermId, siteUrl);
-    if (setTerms.length > 0) {
-      for (const term of setTerms) {
-        if (term.label && term.label.toLowerCase() === trimmedVal) {
-          return term.label;
-        }
-        if (Array.isArray(term.synonyms)) {
-          for (const synonym of term.synonyms) {
-            if (synonym && synonym.trim().toLowerCase() === trimmedVal) {
-              return term.label;
-            }
-          }
-        }
-      }
-    }
-
-    // 2. Also search all terms across groups for parent term matches or child terms
     const targetKey = termSetNameOrTermId.toLowerCase().trim();
+
+    // Iterate through all cached groups and term sets
     for (const group of this._cachedGroups) {
       for (const set of group.termSets) {
-        // If the selected entity matches the set name directly:
+        const allFlatTerms = TaxonomyService.flattenTerms(set.terms);
+
+        // Case A: The linked entity is the entire Term Set
         if (set.name.toLowerCase() === targetKey || set.id.toLowerCase() === targetKey) {
-          for (const term of set.terms) {
+          for (const term of allFlatTerms) {
             if (term.label && term.label.toLowerCase() === trimmedVal) {
               return term.label;
             }
@@ -516,38 +493,50 @@ export class TaxonomyService {
           }
         }
 
-        // If the selected entity matches a parent term in the set:
-        const matchingParentTerm = set.terms.find(
+        // Case B: The linked entity is a specific Term within the set (e.g. "Our teams")
+        const matchingParent = allFlatTerms.find(
           (t) => t.id.toLowerCase() === targetKey || t.label.toLowerCase() === targetKey
         );
 
-        if (matchingParentTerm) {
-          // Check the parent term itself
-          if (matchingParentTerm.label.toLowerCase() === trimmedVal) {
-            return matchingParentTerm.label;
+        if (matchingParent) {
+          // Check the matched term itself
+          if (matchingParent.label && matchingParent.label.toLowerCase() === trimmedVal) {
+            return matchingParent.label;
           }
-          if (Array.isArray(matchingParentTerm.synonyms)) {
-            for (const synonym of matchingParentTerm.synonyms) {
+          if (Array.isArray(matchingParent.synonyms)) {
+            for (const synonym of matchingParent.synonyms) {
               if (synonym && synonym.trim().toLowerCase() === trimmedVal) {
-                return matchingParentTerm.label;
+                return matchingParent.label;
               }
             }
           }
 
-          // Check child terms that have this term's label or path in their path
-          const parentPrefix = `${matchingParentTerm.path} >`.toLowerCase();
-          const children = set.terms.filter(
-            (t) => t.path && t.path.toLowerCase().startsWith(parentPrefix)
-          );
-
-          for (const child of children) {
-            if (child.label.toLowerCase() === trimmedVal) {
-              return child.label;
+          // Check all descendant terms under this parent
+          const descendants = TaxonomyService.flattenTerms(matchingParent.children || []);
+          for (const desc of descendants) {
+            if (desc.label && desc.label.toLowerCase() === trimmedVal) {
+              return desc.label;
             }
-            if (Array.isArray(child.synonyms)) {
-              for (const synonym of child.synonyms) {
+            if (Array.isArray(desc.synonyms)) {
+              for (const synonym of desc.synonyms) {
                 if (synonym && synonym.trim().toLowerCase() === trimmedVal) {
-                  return child.label;
+                  return desc.label;
+                }
+              }
+            }
+          }
+
+          // Fallback: check all flat terms in set whose path starts with this term
+          const parentPrefix = `${matchingParent.path} >`.toLowerCase();
+          const pathChildren = allFlatTerms.filter((t) => t.path && t.path.toLowerCase().startsWith(parentPrefix));
+          for (const pc of pathChildren) {
+            if (pc.label && pc.label.toLowerCase() === trimmedVal) {
+              return pc.label;
+            }
+            if (Array.isArray(pc.synonyms)) {
+              for (const synonym of pc.synonyms) {
+                if (synonym && synonym.trim().toLowerCase() === trimmedVal) {
+                  return pc.label;
                 }
               }
             }
