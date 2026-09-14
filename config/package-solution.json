@@ -1,0 +1,40 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/spfx-build/package-solution.schema.json",
+  "solution": {
+    "name": "spfx-dynamic-filter-client-side-solution",
+    "id": "49a1d355-1f92-49aa-9b16-f38b25184b23",
+    "version": "1.0.0.0",
+    "includeClientSideAssets": true,
+    "skipFeatureDeployment": true,
+    "isDomainIsolated": false,
+    "developer": {
+      "name": "",
+      "websiteUrl": "",
+      "privacyUrl": "",
+      "termsOfUseUrl": "",
+      "mpnId": "Undefined-1.23.2"
+    },
+    "metadata": {
+      "shortDescription": {
+        "default": "Dynamic filter controller web part with dynamic data and profile pre-filtering"
+      },
+      "longDescription": {
+        "default": "Central SPFx Dynamic Data filter & search bar with greeting, user profile popover, and profile pre-filtering."
+      },
+      "screenshotPaths": [],
+      "videoUrl": "",
+      "categories": []
+    },
+    "features": [
+      {
+        "title": "Dynamic Filter Feature",
+        "description": "Activates Dynamic Filter web part.",
+        "id": "9c26be9f-b983-4a69-8e42-99d8b8a511ec",
+        "version": "1.0.0.0"
+      }
+    ]
+  },
+  "paths": {
+    "zippedPackage": "solution/spfx-dynamic-filter.sppkg"
+  }
+}

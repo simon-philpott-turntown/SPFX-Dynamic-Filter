@@ -1,0 +1,41 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/spfx/client-side-web-part-manifest.schema.json",
+  "id": "7b8f9e61-6b45-4df3-a129-9e26e0e64177",
+  "alias": "DynamicFilterWebPart",
+  "componentType": "WebPart",
+  "version": "*",
+  "manifestVersion": 2,
+  "requiresCustomScript": false,
+  "supportedHosts": [
+    "SharePointWebPart",
+    "TeamsPersonalApp",
+    "TeamsTab",
+    "SharePointFullPage"
+  ],
+  "supportsThemeVariants": true,
+  "supportsFullBleed": true,
+  "preconfiguredEntries": [
+    {
+      "groupId": "5c03119e-3074-46fd-976b-c60198311f70",
+      "group": {
+        "default": "Advanced"
+      },
+      "title": {
+        "default": "Dynamic filter"
+      },
+      "description": {
+        "default": "Central SPFx Dynamic Data filter & search bar with greeting, user profile popover, and profile pre-filtering."
+      },
+      "officeFabricIconFontName": "Filter",
+      "properties": {
+        "searchPromptText": "Search all dashboard cards, tags, metrics...",
+        "showAppliedFilters": true,
+        "showAutocomplete": true,
+        "enableProfilePreFiltering": true,
+        "selectedPreFilterProperties": "department,officeLocation",
+        "searchAlignment": "left",
+        "backgroundColor": "transparent"
+      }
+    }
+  ]
+}
