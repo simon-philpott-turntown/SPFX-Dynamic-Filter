@@ -204,7 +204,7 @@ export const DynamicFilter: React.FC<IDynamicFilterProps> = (props) => {
   // Fetch Term Store terms for canonical titles and synonym-based autocomplete
   React.useEffect(() => {
     let isSubscribed = true;
-    TaxonomyService.getTerms()
+    TaxonomyService.getTerms(undefined, undefined, props.siteUrl)
       .then((terms) => {
         if (isSubscribed && Array.isArray(terms)) {
           setTermStoreTerms(terms);
@@ -216,7 +216,7 @@ export const DynamicFilter: React.FC<IDynamicFilterProps> = (props) => {
     return () => {
       isSubscribed = false;
     };
-  }, []);
+  }, [props.siteUrl]);
 
   // Compute theme
   const fluentTheme = React.useMemo(() => {

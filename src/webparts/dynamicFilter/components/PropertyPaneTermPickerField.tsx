@@ -48,6 +48,7 @@ import { ITermStoreTag } from '../../fullWidthContainer/models/IContainerModels'
 export interface IPropertyPaneTermPickerFieldProps {
   label: string;
   selectedTermName?: string;
+  siteUrl?: string;
   onSelectTerm: (termName: string, termTag?: ITermStoreTag) => void;
   onRemoveTerm: () => void;
 }
@@ -55,6 +56,7 @@ export interface IPropertyPaneTermPickerFieldProps {
 const TermPickerControl: React.FC<IPropertyPaneTermPickerFieldProps> = ({
   label,
   selectedTermName,
+  siteUrl,
   onSelectTerm,
   onRemoveTerm
 }) => {
@@ -77,8 +79,8 @@ const TermPickerControl: React.FC<IPropertyPaneTermPickerFieldProps> = ({
         setSelectedTarget(null);
       }
       Promise.all([
-        TaxonomyService.getTermGroups(),
-        TaxonomyService.getTerms()
+        TaxonomyService.getTermGroups(siteUrl),
+        TaxonomyService.getTerms(undefined, undefined, siteUrl)
       ])
         .then(([groups, terms]) => {
           setTermGroups(groups);

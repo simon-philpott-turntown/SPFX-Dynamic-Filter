@@ -33,6 +33,7 @@ export interface IDynamicFilterProps {
   userFirstName: string;
   userDisplayName: string;
   isSiteAdmin: boolean;
+  siteUrl?: string;
   onFilterChange: (payload: IDynamicFilterPayload) => void;
   onOpenPropertyPane?: () => void;
 }

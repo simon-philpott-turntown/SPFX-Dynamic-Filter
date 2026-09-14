@@ -396,6 +396,7 @@ export default class DynamicFilterWebPart
         userFirstName: this._userHarvestResult?.firstName || '',
         userDisplayName: this._userHarvestResult?.displayName || '',
         isSiteAdmin: this._userHarvestResult?.isSiteAdmin || false,
+        siteUrl: this.context?.pageContext?.web?.absoluteUrl,
         onFilterChange: (payload: IDynamicFilterPayload) => {
           this._currentPayload = payload;
           // Notify SPFx Dynamic Data consumers
@@ -543,6 +544,7 @@ export default class DynamicFilterWebPart
         createPropertyPaneTermPickerField(`termlink_${prop.key}`, {
           label: `Link ${prop.label} to Term Store`,
           selectedTermName: props[`termlink_${prop.key}`],
+          siteUrl: this.context?.pageContext?.web?.absoluteUrl,
           onSelectTerm: async (termName: string) => {
             this.properties[`termlink_${prop.key}`] = termName;
             await this._resolveAllSynonyms();
