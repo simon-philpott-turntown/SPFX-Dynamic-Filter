@@ -29,7 +29,8 @@ import {
   Tag,
   Input,
   Skeleton,
-  SkeletonItem
+  SkeletonItem,
+  Portal
 } from '@fluentui/react-components';
 import {
   TagRegular,
@@ -227,316 +228,378 @@ const TermPickerControl: React.FC<IPropertyPaneTermPickerFieldProps> = ({
       )}
 
       {/* Hierarchical Term Store Explorer Modal */}
-      <Dialog
-        open={isModalOpen}
-        onOpenChange={(_, data) => setIsModalOpen(data.open)}
-      >
-        <DialogSurface
-          style={{
-            maxWidth: '560px',
-            width: '90vw',
-            zIndex: 1000000,
-            backgroundColor: '#FFFFFF',
-            border: '1px solid #d1d1d1',
-            boxShadow: '0 24px 48px rgba(0, 0, 0, 0.28)',
-            borderRadius: '8px',
-            padding: '20px'
-          }}
-        >
-          <DialogTitle
-            action={
-              <Button
-                appearance="subtle"
-                aria-label="close"
-                icon={<DismissRegular />}
-                onClick={() => setIsModalOpen(false)}
-              />
-            }
+      <Portal>
+        <FluentProvider theme={webLightTheme}>
+          <Dialog
+            open={isModalOpen}
+            onOpenChange={(_, data) => setIsModalOpen(data.open)}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <TagRegular style={{ color: '#0078d4', fontSize: '20px' }} />
-              <span>Term Store Explorer</span>
-            </div>
-          </DialogTitle>
+            <DialogSurface
+              style={{
+                maxWidth: '560px',
+                width: '90vw',
+                zIndex: 1000000,
+                backgroundColor: '#FFFFFF !important' as any,
+                border: '1px solid #d1d1d1',
+                boxShadow: '0 24px 48px rgba(0, 0, 0, 0.28) !important' as any,
+                borderRadius: '8px',
+                padding: '24px',
+                color: '#323130'
+              }}
+            >
+            <DialogTitle
+              action={
+                <Button
+                  appearance="subtle"
+                  aria-label="close"
+                  icon={<DismissRegular />}
+                  onClick={() => setIsModalOpen(false)}
+                />
+              }
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontFamily: '"Segoe UI", sans-serif' }}>
+                <TagRegular style={{ color: '#0078d4', fontSize: '20px' }} />
+                <span style={{ fontWeight: 600, fontSize: '18px', color: '#323130' }}>Term Store Explorer</span>
+              </div>
+            </DialogTitle>
 
-          <DialogBody>
-            <DialogContent style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '8px' }}>
-              <Caption1 style={{ color: '#605e5c' }}>
-                Browse or search the Term Store. Selecting a term set or parent term will enable automatic synonym resolution for all of its child terms.
-              </Caption1>
-
-              {/* Real-time search bar */}
-              <Input
-                size="medium"
-                contentBefore={<SearchRegular style={{ color: '#0078d4' }} />}
-                placeholder="Search terms, term sets, or synonyms..."
-                value={searchQuery}
-                onChange={(_, data) => setSearchQuery(data.value)}
-                style={{ width: '100%' }}
-              />
-
-              {isLoading ? (
-                <Skeleton style={{ padding: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  <SkeletonItem style={{ height: '24px', width: '80%' }} />
-                  <SkeletonItem style={{ height: '24px', width: '60%' }} />
-                  <SkeletonItem style={{ height: '24px', width: '90%' }} />
-                </Skeleton>
-              ) : searchQuery.trim() ? (
-                /* Search Results View */
-                <div
-                  style={{
-                    maxHeight: '300px',
-                    overflowY: 'auto',
-                    border: '1px solid #edebe9',
-                    borderRadius: '4px',
-                    padding: '8px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '4px'
-                  }}
-                >
-                  {filteredTerms.map((term) => {
-                    const isSelected = selectedTarget?.name === term.label;
-                    return (
-                      <div
-                        key={term.id}
-                        onClick={() => setSelectedTarget({ name: term.label, tag: term })}
-                        onDoubleClick={() => handlePickTerm(term.label, term)}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          padding: '8px 10px',
-                          borderRadius: '4px',
-                          cursor: 'pointer',
-                          backgroundColor: isSelected ? '#deecf9' : '#ffffff',
-                          border: isSelected ? '1px solid #0078d4' : '1px solid #f3f2f1'
-                        }}
-                        onMouseEnter={(e) => {
-                          if (!isSelected) e.currentTarget.style.backgroundColor = '#eff6fc';
-                        }}
-                        onMouseLeave={(e) => {
-                          if (!isSelected) e.currentTarget.style.backgroundColor = '#ffffff';
-                        }}
-                      >
-                        <div>
-                          <div style={{ fontWeight: 600, fontSize: '13px', color: isSelected ? '#004578' : '#201f1e' }}>
-                            🏷️ {term.label}
-                          </div>
-                          {term.path && (
-                            <div style={{ fontSize: '11px', color: '#605e5c' }}>{term.path}</div>
-                          )}
-                          {Array.isArray(term.synonyms) && term.synonyms.length > 0 && (
-                            <div style={{ fontSize: '11px', color: '#0078d4', marginTop: '2px' }}>
-                              Synonyms: {term.synonyms.join(', ')}
-                            </div>
-                          )}
-                        </div>
-                        <Tag size="small" appearance={isSelected ? 'filled' : 'outline'} color={isSelected ? 'brand' : undefined} shape="rounded">
-                          {term.termSetName || 'Term'}
-                        </Tag>
-                      </div>
-                    );
-                  })}
-
-                  {filteredTerms.length === 0 && (
-                    <div style={{ padding: '16px', textAlign: 'center', color: '#605e5c' }}>
-                      No terms or synonyms matched &ldquo;{searchQuery}&rdquo;.
-                    </div>
-                  )}
+            <DialogBody style={{ fontFamily: '"Segoe UI", sans-serif' }}>
+              <DialogContent style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '8px' }}>
+                <div style={{ color: '#605e5c', fontSize: '13px', lineHeight: '18px' }}>
+                  Browse or search the Term Store. Selecting a term set or parent term will enable automatic synonym resolution for all of its child terms.
                 </div>
-              ) : (
-                /* Hierarchical Tree Browser */
-                <div
+
+                {/* Real-time search bar */}
+                <Input
+                  size="medium"
+                  contentBefore={<SearchRegular style={{ color: '#0078d4', fontSize: '16px' }} />}
+                  placeholder="Search terms, term sets, or synonyms..."
+                  value={searchQuery}
+                  onChange={(_, data) => setSearchQuery(data.value)}
                   style={{
-                    maxHeight: '320px',
-                    overflowY: 'auto',
-                    border: '1px solid #edebe9',
-                    borderRadius: '4px',
-                    padding: '8px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '6px'
+                    width: '100%',
+                    backgroundColor: '#ffffff',
+                    border: '1px solid #8a8886',
+                    borderRadius: '4px'
                   }}
-                >
-                  {termGroups.map((grp) => {
-                    const isGrpExpanded = expandedGroups[grp.id] !== false;
-                    return (
-                      <div key={grp.id} style={{ marginBottom: '6px' }}>
-                        {/* Group Header (Click to open / collapse) */}
+                />
+
+                {isLoading ? (
+                  <Skeleton style={{ padding: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <SkeletonItem style={{ height: '24px', width: '80%' }} />
+                    <SkeletonItem style={{ height: '24px', width: '60%' }} />
+                    <SkeletonItem style={{ height: '24px', width: '90%' }} />
+                  </Skeleton>
+                ) : searchQuery.trim() ? (
+                  /* Search Results View */
+                  <div
+                    style={{
+                      maxHeight: '320px',
+                      overflowY: 'auto',
+                      border: '1px solid #d1d1d1',
+                      borderRadius: '6px',
+                      padding: '8px',
+                      backgroundColor: '#ffffff',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '4px'
+                    }}
+                  >
+                    {filteredTerms.map((term) => {
+                      const isSelected = selectedTarget?.name === term.label;
+                      return (
                         <div
+                          key={term.id}
+                          onClick={() => setSelectedTarget({ name: term.label, tag: term })}
+                          onDoubleClick={() => handlePickTerm(term.label, term)}
                           style={{
                             display: 'flex',
                             alignItems: 'center',
-                            gap: '6px',
-                            fontWeight: 700,
-                            fontSize: '13px',
-                            color: '#323130',
-                            padding: '6px 8px',
-                            cursor: 'pointer',
+                            justifyContent: 'space-between',
+                            padding: '8px 12px',
                             borderRadius: '4px',
-                            backgroundColor: isGrpExpanded ? '#f3f2f1' : 'transparent'
+                            cursor: 'pointer',
+                            backgroundColor: isSelected ? '#eff6fc' : '#ffffff',
+                            border: isSelected ? '1px solid #0078d4' : '1px solid #edebe9',
+                            transition: 'all 0.15s ease'
                           }}
-                          onClick={() => toggleGroupExpansion(grp.id)}
                           onMouseEnter={(e) => {
-                            if (!isGrpExpanded) e.currentTarget.style.backgroundColor = '#f8f8f8';
+                            if (!isSelected) e.currentTarget.style.backgroundColor = '#f3f9fd';
                           }}
                           onMouseLeave={(e) => {
-                            if (!isGrpExpanded) e.currentTarget.style.backgroundColor = 'transparent';
+                            if (!isSelected) e.currentTarget.style.backgroundColor = '#ffffff';
                           }}
                         >
-                          {isGrpExpanded ? (
-                            <FolderOpenRegular style={{ color: '#0078d4', fontSize: '16px' }} />
-                          ) : (
-                            <FolderRegular style={{ color: '#605e5c', fontSize: '16px' }} />
-                          )}
-                          <span style={{ userSelect: 'none' }}>{grp.name}</span>
+                          <div>
+                            <div style={{ fontWeight: 600, fontSize: '13px', color: isSelected ? '#004578' : '#201f1e' }}>
+                              🏷️ {term.label}
+                            </div>
+                            {term.path && (
+                              <div style={{ fontSize: '11px', color: '#605e5c', marginTop: '2px' }}>{term.path}</div>
+                            )}
+                            {Array.isArray(term.synonyms) && term.synonyms.length > 0 && (
+                              <div style={{ fontSize: '11px', color: '#0078d4', marginTop: '2px', fontWeight: 500 }}>
+                                Synonyms: {term.synonyms.join(', ')}
+                              </div>
+                            )}
+                          </div>
+                          <span
+                            style={{
+                              fontSize: '11px',
+                              padding: '2px 8px',
+                              borderRadius: '4px',
+                              backgroundColor: isSelected ? '#0078d4' : '#f3f2f1',
+                              color: isSelected ? '#ffffff' : '#323130',
+                              fontWeight: 600
+                            }}
+                          >
+                            {term.termSetName || 'Term'}
+                          </span>
                         </div>
+                      );
+                    })}
 
-                        {/* Term Sets inside Group */}
-                        {isGrpExpanded &&
-                          grp.termSets.map((set) => {
-                            const isExpanded = !!expandedSets[set.id];
-                            const isSetSelected = selectedTarget?.name === set.name;
-                            return (
-                              <div key={set.id} style={{ marginLeft: '18px', marginTop: '3px' }}>
-                                <div
-                                  style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'space-between',
-                                    padding: '5px 8px',
-                                    borderRadius: '4px',
-                                    cursor: 'pointer',
-                                    backgroundColor: isSetSelected ? '#deecf9' : isExpanded ? '#f9f9f9' : 'transparent',
-                                    border: isSetSelected ? '1px solid #0078d4' : '1px solid transparent'
-                                  }}
-                                  onClick={() => {
-                                    toggleSetExpansion(set.id);
-                                    setSelectedTarget({ name: set.name });
-                                  }}
-                                  onDoubleClick={() => handlePickTerm(set.name)}
-                                >
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                    {isExpanded ? (
-                                      <FolderOpenRegular style={{ color: '#0078d4' }} />
-                                    ) : (
-                                      <FolderRegular style={{ color: '#605e5c' }} />
-                                    )}
+                    {filteredTerms.length === 0 && (
+                      <div style={{ padding: '24px', textAlign: 'center', color: '#605e5c', fontSize: '13px' }}>
+                        No terms or synonyms matched &ldquo;{searchQuery}&rdquo;.
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  /* Hierarchical Tree Browser */
+                  <div
+                    style={{
+                      maxHeight: '340px',
+                      overflowY: 'auto',
+                      border: '1px solid #d1d1d1',
+                      borderRadius: '6px',
+                      padding: '8px',
+                      backgroundColor: '#ffffff',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '4px'
+                    }}
+                  >
+                    {termGroups.map((grp) => {
+                      const isGrpExpanded = expandedGroups[grp.id] !== false;
+                      return (
+                        <div key={grp.id} style={{ marginBottom: '4px' }}>
+                          {/* Group Header (Click to open / collapse) */}
+                          <div
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '8px',
+                              fontWeight: 600,
+                              fontSize: '13px',
+                              color: '#323130',
+                              padding: '8px 10px',
+                              cursor: 'pointer',
+                              borderRadius: '4px',
+                              backgroundColor: isGrpExpanded ? '#f8f8f8' : '#fdfdfd',
+                              border: '1px solid #edebe9',
+                              transition: 'background-color 0.15s ease'
+                            }}
+                            onClick={() => toggleGroupExpansion(grp.id)}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.backgroundColor = '#f3f2f1';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.backgroundColor = isGrpExpanded ? '#f8f8f8' : '#fdfdfd';
+                            }}
+                          >
+                            {isGrpExpanded ? (
+                              <FolderOpenRegular style={{ color: '#0078d4', fontSize: '18px' }} />
+                            ) : (
+                              <FolderRegular style={{ color: '#605e5c', fontSize: '18px' }} />
+                            )}
+                            <span style={{ userSelect: 'none' }}>{grp.name}</span>
+                          </div>
+
+                          {/* Term Sets inside Group */}
+                          {isGrpExpanded &&
+                            grp.termSets.map((set) => {
+                              const isExpanded = !!expandedSets[set.id];
+                              const isSetSelected = selectedTarget?.name === set.name;
+                              return (
+                                <div key={set.id} style={{ marginLeft: '16px', marginTop: '4px' }}>
+                                  <div
+                                    style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'space-between',
+                                      padding: '6px 10px',
+                                      borderRadius: '4px',
+                                      cursor: 'pointer',
+                                      backgroundColor: isSetSelected ? '#eff6fc' : isExpanded ? '#faf9f8' : '#ffffff',
+                                      border: isSetSelected ? '1px solid #0078d4' : '1px solid #edebe9',
+                                      transition: 'all 0.15s ease'
+                                    }}
+                                    onClick={() => {
+                                      toggleSetExpansion(set.id);
+                                      setSelectedTarget({ name: set.name });
+                                    }}
+                                    onDoubleClick={() => handlePickTerm(set.name)}
+                                    onMouseEnter={(e) => {
+                                      if (!isSetSelected) e.currentTarget.style.backgroundColor = '#f3f9fd';
+                                    }}
+                                    onMouseLeave={(e) => {
+                                      if (!isSetSelected) e.currentTarget.style.backgroundColor = isExpanded ? '#faf9f8' : '#ffffff';
+                                    }}
+                                  >
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                      {isExpanded ? (
+                                        <FolderOpenRegular style={{ color: '#0078d4', fontSize: '16px' }} />
+                                      ) : (
+                                        <FolderRegular style={{ color: '#605e5c', fontSize: '16px' }} />
+                                      )}
+                                      <span
+                                        style={{
+                                          fontWeight: 600,
+                                          fontSize: '12px',
+                                          color: isSetSelected ? '#004578' : '#201f1e',
+                                          userSelect: 'none'
+                                        }}
+                                      >
+                                        {set.name} ({set.terms.length})
+                                      </span>
+                                    </div>
+
                                     <span
                                       style={{
+                                        fontSize: '11px',
+                                        padding: '2px 8px',
+                                        borderRadius: '4px',
+                                        backgroundColor: isSetSelected ? '#0078d4' : '#edebe9',
+                                        color: isSetSelected ? '#ffffff' : '#605e5c',
                                         fontWeight: 600,
-                                        fontSize: '12px',
-                                        color: isSetSelected ? '#004578' : '#201f1e',
                                         userSelect: 'none'
                                       }}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setSelectedTarget({ name: set.name });
+                                      }}
                                     >
-                                      {set.name} ({set.terms.length})
+                                      Term Set
                                     </span>
                                   </div>
 
-                                  <Tag
-                                    size="small"
-                                    appearance={isSetSelected ? 'filled' : 'outline'}
-                                    color={isSetSelected ? 'brand' : undefined}
-                                    shape="rounded"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setSelectedTarget({ name: set.name });
-                                    }}
-                                  >
-                                    Term Set
-                                  </Tag>
-                                </div>
-
-                                {/* Terms inside Term Set */}
-                                {isExpanded && (
-                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', marginLeft: '18px', marginTop: '2px' }}>
-                                    {set.terms.map((term) => {
-                                      const isTermSelected = selectedTarget?.name === term.label;
-                                      return (
-                                        <div
-                                          key={term.id}
-                                          style={{
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'space-between',
-                                            padding: '4px 8px',
-                                            borderRadius: '4px',
-                                            cursor: 'pointer',
-                                            fontSize: '12px',
-                                            backgroundColor: isTermSelected ? '#deecf9' : 'transparent',
-                                            border: isTermSelected ? '1px solid #0078d4' : '1px solid transparent'
-                                          }}
-                                          onMouseEnter={(e) => {
-                                            if (!isTermSelected) e.currentTarget.style.backgroundColor = '#eff6fc';
-                                          }}
-                                          onMouseLeave={(e) => {
-                                            if (!isTermSelected) e.currentTarget.style.backgroundColor = 'transparent';
-                                          }}
-                                          onClick={() => setSelectedTarget({ name: term.label, tag: term })}
-                                          onDoubleClick={() => handlePickTerm(term.label, term)}
-                                        >
-                                          <div>
-                                            <span style={{ fontWeight: 500, color: isTermSelected ? '#004578' : '#201f1e' }}>
-                                              🏷️ {term.label}
-                                            </span>
-                                            {Array.isArray(term.synonyms) && term.synonyms.length > 0 && (
-                                              <span style={{ fontSize: '11px', color: '#605e5c', marginLeft: '8px' }}>
-                                                ({term.synonyms.join(', ')})
-                                              </span>
-                                            )}
-                                          </div>
-                                          <Tag
-                                            size="small"
-                                            appearance={isTermSelected ? 'filled' : 'outline'}
-                                            color={isTermSelected ? 'brand' : undefined}
-                                            shape="rounded"
+                                  {/* Terms inside Term Set */}
+                                  {isExpanded && (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', marginLeft: '16px', marginTop: '3px' }}>
+                                      {set.terms.map((term) => {
+                                        const isTermSelected = selectedTarget?.name === term.label;
+                                        return (
+                                          <div
+                                            key={term.id}
+                                            style={{
+                                              display: 'flex',
+                                              alignItems: 'center',
+                                              justifyContent: 'space-between',
+                                              padding: '6px 10px',
+                                              borderRadius: '4px',
+                                              cursor: 'pointer',
+                                              fontSize: '12px',
+                                              backgroundColor: isTermSelected ? '#eff6fc' : '#ffffff',
+                                              border: isTermSelected ? '1px solid #0078d4' : '1px solid #f3f2f1',
+                                              transition: 'all 0.15s ease'
+                                            }}
+                                            onMouseEnter={(e) => {
+                                              if (!isTermSelected) e.currentTarget.style.backgroundColor = '#f3f9fd';
+                                            }}
+                                            onMouseLeave={(e) => {
+                                              if (!isTermSelected) e.currentTarget.style.backgroundColor = '#ffffff';
+                                            }}
+                                            onClick={() => setSelectedTarget({ name: term.label, tag: term })}
+                                            onDoubleClick={() => handlePickTerm(term.label, term)}
                                           >
-                                            {isTermSelected ? 'Selected' : 'Select'}
-                                          </Tag>
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </DialogContent>
-
-            <DialogActions style={{ marginTop: '16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div style={{ fontSize: '12px', color: '#605e5c' }}>
-                {selectedTarget?.name ? (
-                  <span>
-                    Selected: <strong style={{ color: '#0078d4' }}>{selectedTarget.name}</strong>
-                  </span>
-                ) : (
-                  <span>No term or set selected</span>
+                                            <div>
+                                              <span style={{ fontWeight: 600, color: isTermSelected ? '#004578' : '#201f1e' }}>
+                                                🏷️ {term.label}
+                                              </span>
+                                              {Array.isArray(term.synonyms) && term.synonyms.length > 0 && (
+                                                <span style={{ fontSize: '11px', color: '#605e5c', marginLeft: '8px' }}>
+                                                  ({term.synonyms.join(', ')})
+                                                </span>
+                                              )}
+                                            </div>
+                                            <span
+                                              style={{
+                                                fontSize: '11px',
+                                                padding: '2px 8px',
+                                                borderRadius: '4px',
+                                                backgroundColor: isTermSelected ? '#0078d4' : '#f3f2f1',
+                                                color: isTermSelected ? '#ffffff' : '#605e5c',
+                                                fontWeight: 500
+                                              }}
+                                            >
+                                              {isTermSelected ? 'Selected' : 'Select'}
+                                            </span>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                        </div>
+                      );
+                    })}
+                  </div>
                 )}
-              </div>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <Button appearance="secondary" onClick={() => setIsModalOpen(false)}>
-                  Cancel
-                </Button>
-                <Button
-                  appearance="primary"
-                  disabled={!selectedTarget?.name}
-                  onClick={handleConfirmSelectedTarget}
-                >
-                  Select term parent
-                </Button>
-              </div>
-            </DialogActions>
-          </DialogBody>
+              </DialogContent>
+
+              <DialogActions style={{ marginTop: '20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid #edebe9', paddingTop: '16px' }}>
+                <div style={{ fontSize: '13px', color: '#605e5c' }}>
+                  {selectedTarget?.name ? (
+                    <span>
+                      Selected: <strong style={{ color: '#0078d4' }}>{selectedTarget.name}</strong>
+                    </span>
+                  ) : (
+                    <span>No term or set selected</span>
+                  )}
+                </div>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <Button
+                    appearance="secondary"
+                    onClick={() => setIsModalOpen(false)}
+                    style={{
+                      padding: '6px 16px',
+                      borderRadius: '4px',
+                      border: '1px solid #8a8886',
+                      backgroundColor: '#ffffff',
+                      color: '#323130',
+                      fontWeight: 600,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    appearance="primary"
+                    disabled={!selectedTarget?.name}
+                    onClick={handleConfirmSelectedTarget}
+                    style={{
+                      padding: '6px 16px',
+                      borderRadius: '4px',
+                      backgroundColor: selectedTarget?.name ? '#0078d4' : '#f3f2f1',
+                      borderColor: selectedTarget?.name ? '#0078d4' : '#f3f2f1',
+                      color: selectedTarget?.name ? '#ffffff' : '#a19f9d',
+                      fontWeight: 600,
+                      cursor: selectedTarget?.name ? 'pointer' : 'default'
+                    }}
+                  >
+                    Select term parent
+                  </Button>
+                </div>
+              </DialogActions>
+            </DialogBody>
         </DialogSurface>
       </Dialog>
-    </div>
+    </FluentProvider>
+  </Portal>
+</div>
   );
 };
 
