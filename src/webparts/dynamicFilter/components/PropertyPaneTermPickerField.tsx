@@ -108,23 +108,16 @@ const TermPickerControl: React.FC<IPropertyPaneTermPickerFieldProps> = ({
             }
           });
 
-          // Auto-expand any top-level parent term if the selected term is a child or matches
-          if (selectedTermName) {
-            const targetLower = selectedTermName.toLowerCase();
-            const findAndExpandParents = (tags: ITermStoreTag[]): void => {
-              tags.forEach((t) => {
-                if (Array.isArray(t.children) && t.children.length > 0) {
-                  const hasMatchingDescendant = (arr: ITermStoreTag[]): boolean =>
-                    arr.some((c) => c.label.toLowerCase() === targetLower || (Array.isArray(c.children) && hasMatchingDescendant(c.children)));
-                  if (t.label.toLowerCase() === targetLower || hasMatchingDescendant(t.children)) {
-                    initialExpandedTerms[t.id] = true;
-                  }
-                  findAndExpandParents(t.children);
-                }
-              });
-            };
-            groups.forEach((g) => g.termSets.forEach((s) => findAndExpandParents(s.terms)));
-          }
+          // Auto-expand all parent terms that have children by default so the user immediately sees the tree structure
+          const expandAllParentTerms = (tags: ITermStoreTag[]): void => {
+            tags.forEach((t) => {
+              if (Array.isArray(t.children) && t.children.length > 0) {
+                initialExpandedTerms[t.id] = true;
+                expandAllParentTerms(t.children);
+              }
+            });
+          };
+          groups.forEach((g) => g.termSets.forEach((s) => expandAllParentTerms(s.terms)));
 
           setExpandedGroups(initialExpandedGroups);
           setExpandedSets(initialExpandedSets);

@@ -243,40 +243,41 @@ export class TaxonomyService {
   }
 
   /**
+   * Helper to normalize GUID strings (strip brackets and lowercase)
+   */
+  private static _normId(id?: string): string {
+    return (id || '').toLowerCase().replace(/[{}]/g, '').trim();
+  }
+
+  /**
    * Organises a list of terms into a hierarchical tree based on parentId or path structure.
    */
   public static organizeTermsIntoTree(terms: ITermStoreTag[]): ITermStoreTag[] {
     if (!terms || terms.length === 0) return [];
 
-    // Check if terms are already hierarchical (i.e. roots with non-empty children)
-    const hasInlineChildren = terms.some((t) => Array.isArray(t.children) && t.children.length > 0);
-    const hasParentIds = terms.some((t) => !!t.parentId);
-
-    if (hasInlineChildren && !hasParentIds) {
-      return terms;
-    }
-
+    // Map by normalized ID
     const termMap = new Map<string, ITermStoreTag>();
     terms.forEach((t) => {
-      // Clone so we don't mutate references unexpectedly
-      termMap.set(t.id, {
+      const normId = TaxonomyService._normId(t.id);
+      termMap.set(normId, {
         ...t,
+        id: normId,
+        parentId: t.parentId ? TaxonomyService._normId(t.parentId) : undefined,
         children: Array.isArray(t.children) ? [...t.children] : []
       });
     });
 
-    const rootTerms: ITermStoreTag[] = [];
+    const hasParentIds = Array.from(termMap.values()).some((t) => !!t.parentId);
 
-    // First pass: Link child to parent by parentId
     if (hasParentIds) {
+      const rootTerms: ITermStoreTag[] = [];
       termMap.forEach((term) => {
-        if (term.parentId && termMap.has(term.parentId)) {
+        if (term.parentId && termMap.has(term.parentId) && term.parentId !== term.id) {
           const parent = termMap.get(term.parentId)!;
           if (!parent.children) {
             parent.children = [];
           }
-          // Avoid duplicate insertions
-          if (!parent.children.some((c) => c.id === term.id)) {
+          if (!parent.children.some((c) => TaxonomyService._normId(c.id) === term.id)) {
             parent.children.push(term);
           }
         } else {
@@ -286,14 +287,13 @@ export class TaxonomyService {
       return rootTerms;
     }
 
-    // Second pass: If parentId is not present, check path depth (e.g. "Group > Set > Parent > Child")
+    // Second pass: If parentId is not populated by API, assemble by path segments
     const termsByDepth = Array.from(termMap.values()).sort((a, b) => {
       const depthA = (a.path || '').split(' > ').length;
       const depthB = (b.path || '').split(' > ').length;
       return depthA - depthB;
     });
 
-    // If all terms have the same depth (e.g. depth 3), return as-is
     const minDepth = termsByDepth.length > 0 ? (termsByDepth[0].path || '').split(' > ').length : 0;
     const maxDepth = termsByDepth.length > 0 ? (termsByDepth[termsByDepth.length - 1].path || '').split(' > ').length : 0;
 
@@ -301,21 +301,19 @@ export class TaxonomyService {
       return termsByDepth;
     }
 
-    // Link by matching path prefixes
     const assembledRoots: ITermStoreTag[] = [];
     termsByDepth.forEach((term) => {
       const segments = (term.path || '').split(' > ');
       if (segments.length <= minDepth) {
         assembledRoots.push(term);
       } else {
-        // Find immediate parent by path (all segments except last)
         const parentPath = segments.slice(0, -1).join(' > ');
         const parentTerm = Array.from(termMap.values()).find((p) => p.path === parentPath);
         if (parentTerm) {
           if (!parentTerm.children) {
             parentTerm.children = [];
           }
-          if (!parentTerm.children.some((c) => c.id === term.id)) {
+          if (!parentTerm.children.some((c) => TaxonomyService._normId(c.id) === term.id)) {
             parentTerm.children.push(term);
           }
         } else {
@@ -468,77 +466,101 @@ export class TaxonomyService {
     }
 
     const trimmedVal = rawValue.trim().toLowerCase();
+    // Also prepare normalized slash version (e.g. forward slash vs backslash)
+    const normSlashVal = trimmedVal.replace(/\\/g, '/');
+
     await this.initializeFromSharePoint(siteUrl);
 
     const targetKey = termSetNameOrTermId.toLowerCase().trim();
+    const targetNormId = TaxonomyService._normId(termSetNameOrTermId);
+
+    // Helper to check if a term matches the value either by its canonical label or any of its synonyms
+    const checkTermMatch = (term: ITermStoreTag): boolean => {
+      if (term.label) {
+        const lblLower = term.label.toLowerCase().trim();
+        if (lblLower === trimmedVal || lblLower.replace(/\\/g, '/') === normSlashVal) {
+          return true;
+        }
+      }
+      if (Array.isArray(term.synonyms)) {
+        for (const synonym of term.synonyms) {
+          if (synonym) {
+            const synLower = synonym.trim().toLowerCase();
+            if (synLower === trimmedVal || synLower.replace(/\\/g, '/') === normSlashVal) {
+              return true;
+            }
+          }
+        }
+      }
+      return false;
+    };
 
     // Iterate through all cached groups and term sets
     for (const group of this._cachedGroups) {
       for (const set of group.termSets) {
         const allFlatTerms = TaxonomyService.flattenTerms(set.terms);
 
-        // Case A: The linked entity is the entire Term Set
-        if (set.name.toLowerCase() === targetKey || set.id.toLowerCase() === targetKey) {
+        // Case A: The linked entity is the entire Term Set (by name or ID)
+        if (
+          set.name.toLowerCase() === targetKey ||
+          set.id.toLowerCase() === targetKey ||
+          TaxonomyService._normId(set.id) === targetNormId
+        ) {
           for (const term of allFlatTerms) {
-            if (term.label && term.label.toLowerCase() === trimmedVal) {
+            if (checkTermMatch(term)) {
               return term.label;
-            }
-            if (Array.isArray(term.synonyms)) {
-              for (const synonym of term.synonyms) {
-                if (synonym && synonym.trim().toLowerCase() === trimmedVal) {
-                  return term.label;
-                }
-              }
             }
           }
         }
 
-        // Case B: The linked entity is a specific Term within the set (e.g. "Our teams")
+        // Case B: The linked entity is a specific Term (by name or ID, e.g. "Our teams")
         const matchingParent = allFlatTerms.find(
-          (t) => t.id.toLowerCase() === targetKey || t.label.toLowerCase() === targetKey
+          (t) =>
+            t.label.toLowerCase().trim() === targetKey ||
+            t.id.toLowerCase() === targetKey ||
+            TaxonomyService._normId(t.id) === targetNormId
         );
 
         if (matchingParent) {
-          // Check the matched term itself
-          if (matchingParent.label && matchingParent.label.toLowerCase() === trimmedVal) {
+          // Check matching parent itself
+          if (checkTermMatch(matchingParent)) {
             return matchingParent.label;
           }
-          if (Array.isArray(matchingParent.synonyms)) {
-            for (const synonym of matchingParent.synonyms) {
-              if (synonym && synonym.trim().toLowerCase() === trimmedVal) {
-                return matchingParent.label;
-              }
-            }
-          }
 
-          // Check all descendant terms under this parent
+          // Check all nested descendants under this parent term
           const descendants = TaxonomyService.flattenTerms(matchingParent.children || []);
           for (const desc of descendants) {
-            if (desc.label && desc.label.toLowerCase() === trimmedVal) {
+            if (checkTermMatch(desc)) {
               return desc.label;
-            }
-            if (Array.isArray(desc.synonyms)) {
-              for (const synonym of desc.synonyms) {
-                if (synonym && synonym.trim().toLowerCase() === trimmedVal) {
-                  return desc.label;
-                }
-              }
             }
           }
 
-          // Fallback: check all flat terms in set whose path starts with this term
-          const parentPrefix = `${matchingParent.path} >`.toLowerCase();
-          const pathChildren = allFlatTerms.filter((t) => t.path && t.path.toLowerCase().startsWith(parentPrefix));
+          // Fallback: check all flat terms in set whose path contains or starts with this parent
+          const parentPrefix = `${matchingParent.path || matchingParent.label} >`.toLowerCase();
+          const pathChildren = allFlatTerms.filter(
+            (t) => t.path && t.path.toLowerCase().indexOf(parentPrefix) !== -1
+          );
           for (const pc of pathChildren) {
-            if (pc.label && pc.label.toLowerCase() === trimmedVal) {
+            if (checkTermMatch(pc)) {
               return pc.label;
             }
-            if (Array.isArray(pc.synonyms)) {
-              for (const synonym of pc.synonyms) {
-                if (synonym && synonym.trim().toLowerCase() === trimmedVal) {
-                  return pc.label;
-                }
-              }
+          }
+        }
+      }
+    }
+
+    // Case C: Global fallback across all terms in all sets if termSetNameOrTermId matches any term or set anywhere
+    for (const group of this._cachedGroups) {
+      for (const set of group.termSets) {
+        const allFlatTerms = TaxonomyService.flattenTerms(set.terms);
+        for (const term of allFlatTerms) {
+          if (checkTermMatch(term)) {
+            // If the term's path or termSetName contains the targetKey, prioritize it
+            if (
+              (term.path && term.path.toLowerCase().indexOf(targetKey) !== -1) ||
+              (term.termSetName && term.termSetName.toLowerCase() === targetKey)
+            ) {
+              return term.label;
             }
           }
         }
