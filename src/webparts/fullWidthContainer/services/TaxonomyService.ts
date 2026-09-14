@@ -153,14 +153,69 @@ export class TaxonomyService {
     headers: Record<string, string>
   ): Promise<ITermStoreTag[]> {
     try {
-      // Query terms with relations expanded so parent/child links are explicitly available
-      const termsEndpoint = `${targetUrl}/_api/v2.1/termStore/sets/${setId}/terms?$expand=relations,children`;
-      const resp = await fetch(termsEndpoint, { headers, credentials: 'include' });
-      if (resp.ok) {
-        const data = await resp.json();
+      // 1. Fetch terms and relations in parallel
+      // In SharePoint REST v2.1, parent-child term associations are stored in /relations (relationType: 'parent')
+      // and top-level root terms can be queried via /children.
+      const termsEndpoint = `${targetUrl}/_api/v2.1/termStore/sets/${setId}/terms`;
+      const relationsEndpoint = `${targetUrl}/_api/v2.1/termStore/sets/${setId}/relations`;
+      const childrenEndpoint = `${targetUrl}/_api/v2.1/termStore/sets/${setId}/children`;
+
+      const [termsResp, relationsResp, childrenResp] = await Promise.all([
+        fetch(termsEndpoint, { headers, credentials: 'include' }).catch(() => null),
+        fetch(relationsEndpoint, { headers, credentials: 'include' }).catch(() => null),
+        fetch(childrenEndpoint, { headers, credentials: 'include' }).catch(() => null)
+      ]);
+
+      let rawTerms: any[] = [];
+      if (termsResp && termsResp.ok) {
+        const data = await termsResp.json();
         if (data && Array.isArray(data.value)) {
-          return TaxonomyService._parseTermsArray(data.value, setId, setName, groupName);
+          rawTerms = data.value;
         }
+      }
+
+      // Build parent-child map from /relations: childId -> parentId
+      // In v2.1:
+      // relationType: 'parent' has fromTerm (child) and toTerm (parent), or setRelationType: 'parent'
+      const parentIdByChildId = new Map<string, string>();
+      if (relationsResp && relationsResp.ok) {
+        try {
+          const relData = await relationsResp.json();
+          if (relData && Array.isArray(relData.value)) {
+            relData.value.forEach((rel: any) => {
+              const relType = (rel.relationType || rel.type || '').toLowerCase();
+              if (relType === 'parent') {
+                const childId = TaxonomyService._normId(rel.fromTerm?.id || rel.fromTermId || rel.sourceId);
+                const parentId = TaxonomyService._normId(rel.toTerm?.id || rel.toTermId || rel.targetId);
+                if (childId && parentId && childId !== parentId) {
+                  parentIdByChildId.set(childId, parentId);
+                }
+              }
+            });
+          }
+        } catch (relErr) {
+          console.warn(`[TaxonomyService] Error parsing relations for set ${setName}:`, relErr);
+        }
+      }
+
+      // Root terms IDs from /children if available
+      const rootTermIds = new Set<string>();
+      if (childrenResp && childrenResp.ok) {
+        try {
+          const childData = await childrenResp.json();
+          if (childData && Array.isArray(childData.value)) {
+            childData.value.forEach((rt: any) => {
+              const rId = TaxonomyService._normId(rt.id);
+              if (rId) rootTermIds.add(rId);
+            });
+          }
+        } catch (cErr) {
+          console.warn(`[TaxonomyService] Error parsing children for set ${setName}:`, cErr);
+        }
+      }
+
+      if (rawTerms.length > 0) {
+        return TaxonomyService._parseTermsArray(rawTerms, setId, setName, groupName, undefined, undefined, parentIdByChildId, rootTermIds);
       }
     } catch (err) {
       console.warn(`[TaxonomyService] Failed to query terms for set ${setName}:`, err);
@@ -170,7 +225,7 @@ export class TaxonomyService {
 
   /**
    * Parses SharePoint v2.1 terms payload into strongly typed ITermStoreTag objects with synonyms.
-   * Preserves parentId from parent property, relations, or parentTermId.
+   * Preserves parentId from parent property, relations map, or parentTermId.
    */
   private static _parseTermsArray(
     rawTerms: Array<{
@@ -184,11 +239,14 @@ export class TaxonomyService {
     setName: string,
     groupName: string,
     parentPath?: string,
-    parentTermId?: string
+    parentTermId?: string,
+    parentIdMap?: Map<string, string>,
+    rootTermIds?: Set<string>
   ): ITermStoreTag[] {
     const rawList: ITermStoreTag[] = [];
 
     rawTerms.forEach((t) => {
+      const normId = TaxonomyService._normId(t.id);
       let primaryLabel = 'Term';
       const synonyms: string[] = [];
 
@@ -207,11 +265,14 @@ export class TaxonomyService {
         ? `${parentPath} > ${primaryLabel}`
         : `${groupName} > ${setName} > ${primaryLabel}`;
 
-      // Extract parent ID from t.parent, relations array, or passed parentTermId
-      let directParentId = t.parent?.id || parentTermId;
+      // Extract parent ID from:
+      // 1. parentIdMap derived from /relations
+      // 2. t.parent.id
+      // 3. inline t.relations
+      // 4. parentTermId passed down
+      let directParentId = (parentIdMap && normId ? parentIdMap.get(normId) : undefined) || t.parent?.id || parentTermId;
       if (!directParentId && Array.isArray(t.relations)) {
         for (const rel of t.relations) {
-          // In v2.1 relations: relationType 'parent' or targetId or fromTerm
           if (rel.relationType === 'parent' || rel.type === 'parent') {
             directParentId = rel.targetId || rel.fromTerm?.id || rel.toTerm?.id;
             break;
@@ -219,27 +280,41 @@ export class TaxonomyService {
         }
       }
 
+      // If this term is confirmed to be a root term via /children, it has NO parent
+      if (rootTermIds && rootTermIds.has(normId)) {
+        directParentId = undefined;
+      }
+
       const parsedTerm: ITermStoreTag = {
-        id: t.id,
+        id: normId,
         label: primaryLabel,
         termSetId: setId,
         termSetName: setName,
         path: currentPath,
         synonyms: synonyms.length > 0 ? synonyms : undefined,
-        parentId: directParentId,
+        parentId: directParentId ? TaxonomyService._normId(directParentId) : undefined,
         children: []
       };
 
       // Parse nested child terms if returned inline
       if (Array.isArray(t.children) && t.children.length > 0) {
-        parsedTerm.children = TaxonomyService._parseTermsArray(t.children, setId, setName, groupName, currentPath, t.id);
+        parsedTerm.children = TaxonomyService._parseTermsArray(
+          t.children,
+          setId,
+          setName,
+          groupName,
+          currentPath,
+          t.id,
+          parentIdMap,
+          rootTermIds
+        );
       }
 
       rawList.push(parsedTerm);
     });
 
     // Assemble flat list into a hierarchical tree based on parentId and relations
-    return TaxonomyService.organizeTermsIntoTree(rawList);
+    return TaxonomyService.organizeTermsIntoTree(rawList, rootTermIds);
   }
 
   /**
@@ -252,7 +327,7 @@ export class TaxonomyService {
   /**
    * Organises a list of terms into a hierarchical tree based on parentId or path structure.
    */
-  public static organizeTermsIntoTree(terms: ITermStoreTag[]): ITermStoreTag[] {
+  public static organizeTermsIntoTree(terms: ITermStoreTag[], rootTermIds?: Set<string>): ITermStoreTag[] {
     if (!terms || terms.length === 0) return [];
 
     // Map by normalized ID
@@ -272,7 +347,10 @@ export class TaxonomyService {
     if (hasParentIds) {
       const rootTerms: ITermStoreTag[] = [];
       termMap.forEach((term) => {
-        if (term.parentId && termMap.has(term.parentId) && term.parentId !== term.id) {
+        // If explicitly in rootTermIds, it is a root
+        const isExplicitRoot = rootTermIds && rootTermIds.has(term.id);
+
+        if (!isExplicitRoot && term.parentId && termMap.has(term.parentId) && term.parentId !== term.id) {
           const parent = termMap.get(term.parentId)!;
           if (!parent.children) {
             parent.children = [];
