@@ -38,7 +38,9 @@ import {
   FolderRegular,
   FolderOpenRegular,
   SearchRegular,
-  TagMultipleRegular
+  TagMultipleRegular,
+  ChevronDownRegular,
+  ChevronRightRegular
 } from '@fluentui/react-icons';
 import { TaxonomyService, ITermGroup } from '../../fullWidthContainer/services/TaxonomyService';
 import { ITermStoreTag } from '../../fullWidthContainer/models/IContainerModels';
@@ -81,21 +83,23 @@ const TermPickerControl: React.FC<IPropertyPaneTermPickerFieldProps> = ({
         .then(([groups, terms]) => {
           setTermGroups(groups);
           setAllTerms(terms);
-          // Auto-expand groups and term sets
+          // Expand all groups by default so users see their term sets immediately
           const initialExpandedGroups: Record<string, boolean> = {};
           const initialExpandedSets: Record<string, boolean> = {};
           groups.forEach((g) => {
             initialExpandedGroups[g.id] = true;
-            g.termSets.forEach((s) => {
-              if (
-                s.name.toLowerCase() === 'our teams' ||
-                s.name.toLowerCase() === 'our sectors' ||
-                s.name.toLowerCase() === 'our capabilities' ||
-                (selectedTermName && (s.name.toLowerCase() === selectedTermName.toLowerCase() || s.terms.some((t) => t.label.toLowerCase() === selectedTermName.toLowerCase())))
-              ) {
-                initialExpandedSets[s.id] = true;
-              }
-            });
+            if (Array.isArray(g.termSets)) {
+              g.termSets.forEach((s) => {
+                if (
+                  s.name.toLowerCase() === 'our teams' ||
+                  s.name.toLowerCase() === 'our sectors' ||
+                  s.name.toLowerCase() === 'our capabilities' ||
+                  (selectedTermName && (s.name.toLowerCase() === selectedTermName.toLowerCase() || s.terms.some((t) => t.label.toLowerCase() === selectedTermName.toLowerCase())))
+                ) {
+                  initialExpandedSets[s.id] = true;
+                }
+              });
+            }
           });
           setExpandedGroups(initialExpandedGroups);
           setExpandedSets(initialExpandedSets);
@@ -107,18 +111,30 @@ const TermPickerControl: React.FC<IPropertyPaneTermPickerFieldProps> = ({
     }
   }, [isModalOpen]);
 
-  const toggleGroupExpansion = (grpId: string): void => {
-    setExpandedGroups((prev) => ({
-      ...prev,
-      [grpId]: !prev[grpId]
-    }));
+  const toggleGroupExpansion = (grpId: string, e?: React.MouseEvent): void => {
+    if (e) {
+      e.stopPropagation();
+    }
+    setExpandedGroups((prev) => {
+      const current = prev[grpId] !== undefined ? prev[grpId] : true;
+      return {
+        ...prev,
+        [grpId]: !current
+      };
+    });
   };
 
-  const toggleSetExpansion = (setId: string): void => {
-    setExpandedSets((prev) => ({
-      ...prev,
-      [setId]: !prev[setId]
-    }));
+  const toggleSetExpansion = (setId: string, e?: React.MouseEvent): void => {
+    if (e) {
+      e.stopPropagation();
+    }
+    setExpandedSets((prev) => {
+      const current = prev[setId] !== undefined ? prev[setId] : false;
+      return {
+        ...prev,
+        [setId]: !current
+      };
+    });
   };
 
   const handlePickTerm = (name: string, tag?: ITermStoreTag): void => {
@@ -236,8 +252,8 @@ const TermPickerControl: React.FC<IPropertyPaneTermPickerFieldProps> = ({
           >
             <DialogSurface
               style={{
-                maxWidth: '560px',
-                width: '90vw',
+                maxWidth: '620px',
+                width: '92vw',
                 zIndex: 1000000,
                 backgroundColor: '#FFFFFF !important' as any,
                 border: '1px solid #d1d1d1',
@@ -381,7 +397,8 @@ const TermPickerControl: React.FC<IPropertyPaneTermPickerFieldProps> = ({
                     }}
                   >
                     {termGroups.map((grp) => {
-                      const isGrpExpanded = expandedGroups[grp.id] !== false;
+                      const isGrpExpanded = expandedGroups[grp.id] !== undefined ? expandedGroups[grp.id] : true;
+                      const hasTermSets = Array.isArray(grp.termSets) && grp.termSets.length > 0;
                       return (
                         <div key={grp.id} style={{ marginBottom: '4px' }}>
                           {/* Group Header (Click to open / collapse) */}
@@ -389,38 +406,49 @@ const TermPickerControl: React.FC<IPropertyPaneTermPickerFieldProps> = ({
                             style={{
                               display: 'flex',
                               alignItems: 'center',
-                              gap: '8px',
+                              justifyContent: 'space-between',
                               fontWeight: 600,
                               fontSize: '13px',
                               color: '#323130',
                               padding: '8px 10px',
                               cursor: 'pointer',
                               borderRadius: '4px',
-                              backgroundColor: isGrpExpanded ? '#f8f8f8' : '#fdfdfd',
+                              backgroundColor: isGrpExpanded ? '#f3f2f1' : '#faf9f8',
                               border: '1px solid #edebe9',
                               transition: 'background-color 0.15s ease'
                             }}
-                            onClick={() => toggleGroupExpansion(grp.id)}
+                            onClick={(e) => toggleGroupExpansion(grp.id, e)}
                             onMouseEnter={(e) => {
-                              e.currentTarget.style.backgroundColor = '#f3f2f1';
+                              e.currentTarget.style.backgroundColor = '#edebe9';
                             }}
                             onMouseLeave={(e) => {
-                              e.currentTarget.style.backgroundColor = isGrpExpanded ? '#f8f8f8' : '#fdfdfd';
+                              e.currentTarget.style.backgroundColor = isGrpExpanded ? '#f3f2f1' : '#faf9f8';
                             }}
                           >
-                            {isGrpExpanded ? (
-                              <FolderOpenRegular style={{ color: '#0078d4', fontSize: '18px' }} />
-                            ) : (
-                              <FolderRegular style={{ color: '#605e5c', fontSize: '18px' }} />
-                            )}
-                            <span style={{ userSelect: 'none' }}>{grp.name}</span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              {isGrpExpanded ? (
+                                <ChevronDownRegular style={{ fontSize: '14px', color: '#0078d4' }} />
+                              ) : (
+                                <ChevronRightRegular style={{ fontSize: '14px', color: '#605e5c' }} />
+                              )}
+                              {isGrpExpanded ? (
+                                <FolderOpenRegular style={{ color: '#0078d4', fontSize: '18px' }} />
+                              ) : (
+                                <FolderRegular style={{ color: '#605e5c', fontSize: '18px' }} />
+                              )}
+                              <span style={{ userSelect: 'none' }}>{grp.name}</span>
+                            </div>
+                            <span style={{ fontSize: '11px', color: '#605e5c', fontWeight: 500 }}>
+                              {hasTermSets ? `${grp.termSets.length} set${grp.termSets.length === 1 ? '' : 's'}` : '0 sets'}
+                            </span>
                           </div>
 
                           {/* Term Sets inside Group */}
-                          {isGrpExpanded &&
+                          {isGrpExpanded && hasTermSets &&
                             grp.termSets.map((set) => {
-                              const isExpanded = !!expandedSets[set.id];
+                              const isExpanded = expandedSets[set.id] !== undefined ? expandedSets[set.id] : false;
                               const isSetSelected = selectedTarget?.name === set.name;
+                              const hasTerms = Array.isArray(set.terms) && set.terms.length > 0;
                               return (
                                 <div key={set.id} style={{ marginLeft: '16px', marginTop: '4px' }}>
                                   <div
@@ -435,8 +463,8 @@ const TermPickerControl: React.FC<IPropertyPaneTermPickerFieldProps> = ({
                                       border: isSetSelected ? '1px solid #0078d4' : '1px solid #edebe9',
                                       transition: 'all 0.15s ease'
                                     }}
-                                    onClick={() => {
-                                      toggleSetExpansion(set.id);
+                                    onClick={(e) => {
+                                      toggleSetExpansion(set.id, e);
                                       setSelectedTarget({ name: set.name });
                                     }}
                                     onDoubleClick={() => handlePickTerm(set.name)}
@@ -448,6 +476,13 @@ const TermPickerControl: React.FC<IPropertyPaneTermPickerFieldProps> = ({
                                     }}
                                   >
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                      {hasTerms && (
+                                        isExpanded ? (
+                                          <ChevronDownRegular style={{ fontSize: '12px', color: '#0078d4' }} />
+                                        ) : (
+                                          <ChevronRightRegular style={{ fontSize: '12px', color: '#605e5c' }} />
+                                        )
+                                      )}
                                       {isExpanded ? (
                                         <FolderOpenRegular style={{ color: '#0078d4', fontSize: '16px' }} />
                                       ) : (
@@ -461,7 +496,7 @@ const TermPickerControl: React.FC<IPropertyPaneTermPickerFieldProps> = ({
                                           userSelect: 'none'
                                         }}
                                       >
-                                        {set.name} ({set.terms.length})
+                                        {set.name} ({set.terms ? set.terms.length : 0})
                                       </span>
                                     </div>
 
@@ -487,62 +522,78 @@ const TermPickerControl: React.FC<IPropertyPaneTermPickerFieldProps> = ({
                                   {/* Terms inside Term Set */}
                                   {isExpanded && (
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', marginLeft: '16px', marginTop: '3px' }}>
-                                      {set.terms.map((term) => {
-                                        const isTermSelected = selectedTarget?.name === term.label;
-                                        return (
-                                          <div
-                                            key={term.id}
-                                            style={{
-                                              display: 'flex',
-                                              alignItems: 'center',
-                                              justifyContent: 'space-between',
-                                              padding: '6px 10px',
-                                              borderRadius: '4px',
-                                              cursor: 'pointer',
-                                              fontSize: '12px',
-                                              backgroundColor: isTermSelected ? '#eff6fc' : '#ffffff',
-                                              border: isTermSelected ? '1px solid #0078d4' : '1px solid #f3f2f1',
-                                              transition: 'all 0.15s ease'
-                                            }}
-                                            onMouseEnter={(e) => {
-                                              if (!isTermSelected) e.currentTarget.style.backgroundColor = '#f3f9fd';
-                                            }}
-                                            onMouseLeave={(e) => {
-                                              if (!isTermSelected) e.currentTarget.style.backgroundColor = '#ffffff';
-                                            }}
-                                            onClick={() => setSelectedTarget({ name: term.label, tag: term })}
-                                            onDoubleClick={() => handlePickTerm(term.label, term)}
-                                          >
-                                            <div>
-                                              <span style={{ fontWeight: 600, color: isTermSelected ? '#004578' : '#201f1e' }}>
-                                                🏷️ {term.label}
-                                              </span>
-                                              {Array.isArray(term.synonyms) && term.synonyms.length > 0 && (
-                                                <span style={{ fontSize: '11px', color: '#605e5c', marginLeft: '8px' }}>
-                                                  ({term.synonyms.join(', ')})
-                                                </span>
-                                              )}
-                                            </div>
-                                            <span
+                                      {hasTerms ? (
+                                        set.terms.map((term) => {
+                                          const isTermSelected = selectedTarget?.name === term.label;
+                                          return (
+                                            <div
+                                              key={term.id}
                                               style={{
-                                                fontSize: '11px',
-                                                padding: '2px 8px',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'space-between',
+                                                padding: '6px 10px',
                                                 borderRadius: '4px',
-                                                backgroundColor: isTermSelected ? '#0078d4' : '#f3f2f1',
-                                                color: isTermSelected ? '#ffffff' : '#605e5c',
-                                                fontWeight: 500
+                                                cursor: 'pointer',
+                                                fontSize: '12px',
+                                                backgroundColor: isTermSelected ? '#eff6fc' : '#ffffff',
+                                                border: isTermSelected ? '1px solid #0078d4' : '1px solid #f3f2f1',
+                                                transition: 'all 0.15s ease'
                                               }}
+                                              onMouseEnter={(e) => {
+                                                if (!isTermSelected) e.currentTarget.style.backgroundColor = '#f3f9fd';
+                                              }}
+                                              onMouseLeave={(e) => {
+                                                if (!isTermSelected) e.currentTarget.style.backgroundColor = '#ffffff';
+                                              }}
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                setSelectedTarget({ name: term.label, tag: term });
+                                              }}
+                                              onDoubleClick={() => handlePickTerm(term.label, term)}
                                             >
-                                              {isTermSelected ? 'Selected' : 'Select'}
-                                            </span>
-                                          </div>
-                                        );
-                                      })}
+                                              <div>
+                                                <span style={{ fontWeight: 600, color: isTermSelected ? '#004578' : '#201f1e' }}>
+                                                  🏷️ {term.label}
+                                                </span>
+                                                {Array.isArray(term.synonyms) && term.synonyms.length > 0 && (
+                                                  <span style={{ fontSize: '11px', color: '#605e5c', marginLeft: '8px' }}>
+                                                    ({term.synonyms.join(', ')})
+                                                  </span>
+                                                )}
+                                              </div>
+                                              <span
+                                                style={{
+                                                  fontSize: '11px',
+                                                  padding: '2px 8px',
+                                                  borderRadius: '4px',
+                                                  backgroundColor: isTermSelected ? '#0078d4' : '#f3f2f1',
+                                                  color: isTermSelected ? '#ffffff' : '#605e5c',
+                                                  fontWeight: 500
+                                                }}
+                                              >
+                                                {isTermSelected ? 'Selected' : 'Select'}
+                                              </span>
+                                            </div>
+                                          );
+                                        })
+                                      ) : (
+                                        <div style={{ padding: '6px 10px', fontSize: '11px', color: '#8a8886', fontStyle: 'italic' }}>
+                                          No terms in this term set
+                                        </div>
+                                      )}
                                     </div>
                                   )}
                                 </div>
                               );
                             })}
+
+                          {/* Fallback indicator if group has no term sets */}
+                          {isGrpExpanded && !hasTermSets && (
+                            <div style={{ marginLeft: '24px', marginTop: '4px', padding: '6px 10px', fontSize: '12px', color: '#8a8886', fontStyle: 'italic' }}>
+                              No term sets found in this group
+                            </div>
+                          )}
                         </div>
                       );
                     })}
@@ -550,8 +601,8 @@ const TermPickerControl: React.FC<IPropertyPaneTermPickerFieldProps> = ({
                 )}
               </DialogContent>
 
-              <DialogActions style={{ marginTop: '20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid #edebe9', paddingTop: '16px' }}>
-                <div style={{ fontSize: '13px', color: '#605e5c' }}>
+              <DialogActions style={{ marginTop: '20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid #edebe9', paddingTop: '16px', gap: '16px' }}>
+                <div style={{ fontSize: '13px', color: '#605e5c', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {selectedTarget?.name ? (
                     <span>
                       Selected: <strong style={{ color: '#0078d4' }}>{selectedTarget.name}</strong>
@@ -560,12 +611,16 @@ const TermPickerControl: React.FC<IPropertyPaneTermPickerFieldProps> = ({
                     <span>No term or set selected</span>
                   )}
                 </div>
-                <div style={{ display: 'flex', gap: '8px' }}>
+                <div style={{ display: 'flex', gap: '12px', flexShrink: 0, alignItems: 'center' }}>
                   <Button
                     appearance="secondary"
                     onClick={() => setIsModalOpen(false)}
                     style={{
-                      padding: '6px 16px',
+                      padding: '6px 20px',
+                      minWidth: '100px',
+                      height: '36px',
+                      whiteSpace: 'nowrap',
+                      flexShrink: 0,
                       borderRadius: '4px',
                       border: '1px solid #8a8886',
                       backgroundColor: '#ffffff',
@@ -581,7 +636,11 @@ const TermPickerControl: React.FC<IPropertyPaneTermPickerFieldProps> = ({
                     disabled={!selectedTarget?.name}
                     onClick={handleConfirmSelectedTarget}
                     style={{
-                      padding: '6px 16px',
+                      padding: '6px 24px',
+                      minWidth: '170px',
+                      height: '36px',
+                      whiteSpace: 'nowrap',
+                      flexShrink: 0,
                       borderRadius: '4px',
                       backgroundColor: selectedTarget?.name ? '#0078d4' : '#f3f2f1',
                       borderColor: selectedTarget?.name ? '#0078d4' : '#f3f2f1',
