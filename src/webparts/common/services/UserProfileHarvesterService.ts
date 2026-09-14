@@ -81,10 +81,15 @@ export class UserProfileHarvesterService {
         }
 
         try {
-          const photoBlob: Blob = await graphClient
+          const timeoutPromise = new Promise<Blob>((_, reject) =>
+            setTimeout(() => reject(new Error('Photo fetch timeout')), 1500)
+          );
+          const photoPromise: Promise<Blob> = graphClient
             .api('/me/photo/$value')
             .responseType('blob' as any)
             .get();
+
+          const photoBlob = await Promise.race([photoPromise, timeoutPromise]);
 
           if (photoBlob && photoBlob.size > 0) {
             photoUrl = URL.createObjectURL(photoBlob);

@@ -488,12 +488,21 @@ export const DynamicFilter: React.FC<IDynamicFilterProps> = (props) => {
     });
   };
 
-  // Clear all filters: resets committed search chips, active search query, external filters, and dismissed pre-filters
+  // Clear all filters: resets committed search chips, active search query, external filters, and marks all pre-filters dismissed
   const handleClearAll = (): void => {
     setCommittedSearchFilters([]);
     setSearchQuery('');
     setActiveExternalFilters({});
-    setDismissedPreFilterKeys({});
+    if (selectedPreFilterProperties && selectedPreFilterProperties.length > 0) {
+      const allDismissed: Record<string, boolean> = {};
+      selectedPreFilterProperties.forEach((k) => {
+        const clean = k.trim();
+        if (clean) allDismissed[clean] = true;
+      });
+      setDismissedPreFilterKeys(allDismissed);
+    } else {
+      setDismissedPreFilterKeys({});
+    }
     setShowSuggestions(false);
   };
 

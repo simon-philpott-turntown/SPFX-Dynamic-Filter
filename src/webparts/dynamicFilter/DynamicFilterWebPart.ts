@@ -256,6 +256,32 @@ export default class DynamicFilterWebPart
       console.warn('[DynamicFilterWebPart] Dynamic data source registration failed (non-fatal):', initErr);
     }
 
+    // Pre-seed user details synchronously from pageContext for instant 0ms greeting and avatar render
+    const currentUser = this.context?.pageContext?.user;
+    const legacyCtx = (window as any)._spPageContextInfo || (this.context?.pageContext as any)?.legacyPageContext;
+    const isSiteAdmin = Boolean(legacyCtx?.isSiteAdmin);
+    const userAccount = currentUser?.email || currentUser?.loginName || '';
+    const webRelativeUrl = this.context?.pageContext?.web?.serverRelativeUrl;
+    const normalizedWebUrl = webRelativeUrl === '/' ? '' : (webRelativeUrl || '');
+    const instantPhotoUrl = userAccount
+      ? `${normalizedWebUrl}/_layouts/15/userphoto.aspx?size=M&accountname=${encodeURIComponent(userAccount)}`
+      : '';
+    const instantFirstName = currentUser?.displayName ? currentUser.displayName.split(' ')[0] : 'there';
+
+    this._userHarvestResult = {
+      details: {
+        DisplayName: currentUser?.displayName || '',
+        email: currentUser?.email || '',
+        loginName: currentUser?.loginName || '',
+        FirstName: instantFirstName,
+        isSiteAdmin
+      },
+      photoUrl: instantPhotoUrl,
+      firstName: instantFirstName,
+      displayName: currentUser?.displayName || 'Colleague',
+      isSiteAdmin
+    };
+
     // Pre-seed taxonomy service
     void TaxonomyService.initializeFromSharePoint(this.context?.pageContext?.web?.absoluteUrl);
 
