@@ -80,8 +80,8 @@ const TermPickerControl: React.FC<IPropertyPaneTermPickerFieldProps> = ({
         setSelectedTarget(null);
       }
       Promise.all([
-        TaxonomyService.getTermGroups(siteUrl),
-        TaxonomyService.getTerms(undefined, undefined, siteUrl)
+        TaxonomyService.getTermGroups(siteUrl, true),
+        TaxonomyService.getTerms(undefined, undefined, siteUrl, true)
       ])
         .then(([groups, terms]) => {
           setTermGroups(groups);

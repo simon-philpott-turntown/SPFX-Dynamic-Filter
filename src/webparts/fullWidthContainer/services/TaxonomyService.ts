@@ -406,8 +406,8 @@ export class TaxonomyService {
   /**
    * Returns all hierarchical term groups and their term sets directly from live SharePoint.
    */
-  public static async getTermGroups(siteUrl?: string): Promise<ITermGroup[]> {
-    await this.initializeFromSharePoint(siteUrl);
+  public static async getTermGroups(siteUrl?: string, forceRefresh: boolean = false): Promise<ITermGroup[]> {
+    await this.initializeFromSharePoint(siteUrl, forceRefresh);
     return this._cachedGroups;
   }
 
@@ -431,8 +431,8 @@ export class TaxonomyService {
   /**
    * Fetches flattened list of terms matching optional search query and term set filter.
    */
-  public static async getTerms(filterQuery?: string, termSetFilter?: string, siteUrl?: string): Promise<ITermStoreTag[]> {
-    await this.initializeFromSharePoint(siteUrl);
+  public static async getTerms(filterQuery?: string, termSetFilter?: string, siteUrl?: string, forceRefresh: boolean = false): Promise<ITermStoreTag[]> {
+    await this.initializeFromSharePoint(siteUrl, forceRefresh);
 
     const allTerms: ITermStoreTag[] = [];
     const seenIds = new Set<string>();
