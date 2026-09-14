@@ -373,7 +373,10 @@ export default class DynamicFilterWebPart
     }
 
     try {
-      const props = this.properties || ({} as Partial<IDynamicFilterWebPartProps>);
+      if (!this.properties) {
+        (this as any).properties = {};
+      }
+      const props = this.properties;
 
       // Compile active properties from individual checkbox toggles
       const activeProperties: string[] = [];
@@ -384,7 +387,9 @@ export default class DynamicFilterWebPart
       });
 
       // Keep selectedPreFilterProperties comma-string synchronized for backwards compatibility
-      this.properties.selectedPreFilterProperties = activeProperties.join(',');
+      if (this.properties) {
+        this.properties.selectedPreFilterProperties = activeProperties.join(',');
+      }
 
       // Build term mappings dictionary
       const termMappings: Record<string, string> = {};
@@ -468,7 +473,9 @@ export default class DynamicFilterWebPart
     if (!currentTheme) return;
     this._themeVariant = currentTheme;
     this._isDarkTheme = !!currentTheme.isInverted;
-    this.render();
+    if (this.domElement && this.properties) {
+      this.render();
+    }
   }
 
   protected onDispose(): void {
