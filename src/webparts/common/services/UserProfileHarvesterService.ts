@@ -17,10 +17,36 @@ export interface IUserProfileHarvestResult {
 
 export class UserProfileHarvesterService {
   private static _cache: IUserProfileHarvestResult | undefined;
+  private static readonly STORAGE_KEY = 'SPFX_HARVESTED_USER_PROFILE_v1';
+
+  public static getCachedResult(context?: WebPartContext): IUserProfileHarvestResult | undefined {
+    if (this._cache) return this._cache;
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        const raw = window.localStorage.getItem(this.STORAGE_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw) as IUserProfileHarvestResult;
+          if (parsed && parsed.details && typeof parsed.details === 'object') {
+            this._cache = parsed;
+            return parsed;
+          }
+        }
+      }
+    } catch {
+      // Ignore localStorage read errors
+    }
+    return undefined;
+  }
 
   public static async harvest(context: WebPartContext): Promise<IUserProfileHarvestResult> {
-    if (this._cache) {
+    if (this._cache && this._cache.details && Object.keys(this._cache.details).length > 6) {
       return this._cache;
+    }
+
+    const cached = this.getCachedResult(context);
+    if (cached && cached.details && Object.keys(cached.details).length > 6) {
+      this._cache = cached;
+      // Continue background refresh non-blockingly if needed, but return cached immediately
     }
 
     const user = context?.pageContext?.user;
@@ -28,17 +54,18 @@ export class UserProfileHarvesterService {
     const isSiteAdmin = Boolean(legacyPageContext?.isSiteAdmin);
 
     const baseDetails: Record<string, any> = {
-      DisplayName: user?.displayName || '',
-      email: user?.email || '',
-      loginName: user?.loginName || '',
+      ...(cached?.details || {}),
+      DisplayName: user?.displayName || cached?.details?.DisplayName || '',
+      email: user?.email || cached?.details?.email || '',
+      loginName: user?.loginName || cached?.details?.loginName || '',
       isSiteAdmin,
       isAnonymousGuestUser: Boolean(user?.isAnonymousGuestUser),
       isExternalGuestUser: Boolean(user?.isExternalGuestUser)
     };
 
-    let photoUrl = '';
+    let photoUrl = cached?.photoUrl || '';
     const accountIdentifier = user?.email || user?.loginName || '';
-    if (accountIdentifier && context?.pageContext?.web?.serverRelativeUrl) {
+    if (!photoUrl && accountIdentifier && context?.pageContext?.web?.serverRelativeUrl) {
       const webUrl = context.pageContext.web.serverRelativeUrl === '/' ? '' : context.pageContext.web.serverRelativeUrl;
       photoUrl = `${webUrl}/_layouts/15/userphoto.aspx?size=M&accountname=${encodeURIComponent(accountIdentifier)}`;
     }
@@ -173,6 +200,14 @@ export class UserProfileHarvesterService {
     };
 
     this._cache = result;
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        window.localStorage.setItem(this.STORAGE_KEY, JSON.stringify(result));
+      }
+    } catch {
+      // Ignore localStorage write quota/privacy errors
+    }
+
     return result;
   }
 }

@@ -271,7 +271,8 @@ export const DynamicFilter: React.FC<IDynamicFilterProps> = (props) => {
     if (enableProfilePreFiltering && selectedPreFilterProperties && selectedPreFilterProperties.length > 0) {
       selectedPreFilterProperties.forEach((propKey) => {
         const cleanKey = propKey.trim();
-        if (cleanKey && !dismissedPreFilterKeys[cleanKey]) {
+        const isDismissed = dismissedPreFilterKeys[cleanKey] || dismissedPreFilterKeys[cleanKey.toLowerCase()];
+        if (cleanKey && !isDismissed) {
           // 1. Check if an overriding term synonym value was pre-resolved
           if (resolvedTermSynonymValues && resolvedTermSynonymValues[cleanKey]) {
             const mappedVal = String(resolvedTermSynonymValues[cleanKey]).trim();
@@ -474,9 +475,11 @@ export const DynamicFilter: React.FC<IDynamicFilterProps> = (props) => {
   };
 
   const handleRemovePreFilter = (propKey: string): void => {
+    const clean = propKey.trim();
     setDismissedPreFilterKeys((prev) => ({
       ...prev,
-      [propKey]: true
+      [clean]: true,
+      [clean.toLowerCase()]: true
     }));
   };
 
@@ -493,16 +496,30 @@ export const DynamicFilter: React.FC<IDynamicFilterProps> = (props) => {
     setCommittedSearchFilters([]);
     setSearchQuery('');
     setActiveExternalFilters({});
+
+    const allDismissed: Record<string, boolean> = {};
     if (selectedPreFilterProperties && selectedPreFilterProperties.length > 0) {
-      const allDismissed: Record<string, boolean> = {};
       selectedPreFilterProperties.forEach((k) => {
         const clean = k.trim();
-        if (clean) allDismissed[clean] = true;
+        if (clean) {
+          allDismissed[clean] = true;
+          allDismissed[clean.toLowerCase()] = true;
+        }
       });
-      setDismissedPreFilterKeys(allDismissed);
-    } else {
-      setDismissedPreFilterKeys({});
     }
+    if (userProfileDetails) {
+      Object.keys(userProfileDetails).forEach((k) => {
+        allDismissed[k] = true;
+        allDismissed[k.toLowerCase()] = true;
+      });
+    }
+    if (resolvedPreFilters) {
+      Object.keys(resolvedPreFilters).forEach((k) => {
+        allDismissed[k] = true;
+        allDismissed[k.toLowerCase()] = true;
+      });
+    }
+    setDismissedPreFilterKeys(allDismissed);
     setShowSuggestions(false);
   };
 
