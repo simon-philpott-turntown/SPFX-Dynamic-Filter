@@ -37,6 +37,7 @@ import {
 import { IDynamicFilterProps } from './IDynamicFilterProps';
 import { IDynamicFilterPayload } from '../../common/models/IDynamicFilterTypes';
 import { getFluent2Theme } from '../../common/utils/themeBridge';
+import { TaxonomyService } from '../../fullWidthContainer/services/TaxonomyService';
 
 const useStyles = makeStyles({
   root: {
@@ -193,9 +194,29 @@ export const DynamicFilter: React.FC<IDynamicFilterProps> = (props) => {
   const styles = useStyles();
 
   const [searchQuery, setSearchQuery] = React.useState<string>('');
+  const [committedSearchFilters, setCommittedSearchFilters] = React.useState<string[]>([]);
+  const [termStoreTerms, setTermStoreTerms] = React.useState<any[]>([]);
+  const [showSuggestions, setShowSuggestions] = React.useState<boolean>(false);
   const [activeExternalFilters, setActiveExternalFilters] = React.useState<Record<string, string>>({});
   const [dismissedPreFilterKeys, setDismissedPreFilterKeys] = React.useState<Record<string, boolean>>({});
   const [isProfileOpen, setIsProfileOpen] = React.useState<boolean>(false);
+
+  // Fetch Term Store terms for canonical titles and synonym-based autocomplete
+  React.useEffect(() => {
+    let isSubscribed = true;
+    TaxonomyService.getTerms()
+      .then((terms) => {
+        if (isSubscribed && Array.isArray(terms)) {
+          setTermStoreTerms(terms);
+        }
+      })
+      .catch((err) => {
+        console.warn('[DynamicFilter] Failed to load term store terms for autocomplete:', err);
+      });
+    return () => {
+      isSubscribed = false;
+    };
+  }, []);
 
   // Compute theme
   const fluentTheme = React.useMemo(() => {
@@ -306,20 +327,110 @@ export const DynamicFilter: React.FC<IDynamicFilterProps> = (props) => {
   // Track previous combined string to prevent infinite notification loop
   const prevBroadcastRef = React.useRef<string | null>(null);
 
-  // Broadcast combined filter payload whenever searchQuery, preFilters, or activeExternalFilters change
+  // Autocomplete suggestions computed from Term Store canonical terms and synonyms
+  // Triggers ONLY when showAutocomplete is enabled AND search query is at least 2 characters
+  const autocompleteSuggestions = React.useMemo(() => {
+    if (showAutocomplete === false) return [];
+    const trimmed = searchQuery.trim().toLowerCase();
+    if (trimmed.length < 2) return [];
+
+    interface ISuggestionItem {
+      termTitle: string;
+      matchedSynonym?: string;
+      path?: string;
+      termSetName?: string;
+    }
+
+    const map = new Map<string, ISuggestionItem>();
+
+    termStoreTerms.forEach((t) => {
+      if (!t || !t.label) return;
+      const labelLower = t.label.toLowerCase();
+
+      // 1. Exact or partial match on canonical Term Title
+      if (labelLower.indexOf(trimmed) !== -1) {
+        if (!map.has(t.label)) {
+          map.set(t.label, {
+            termTitle: t.label,
+            termSetName: t.termSetName,
+            path: t.path
+          });
+        }
+      }
+
+      // 2. Match against any defined Term Synonyms
+      if (Array.isArray(t.synonyms)) {
+        t.synonyms.forEach((syn: string) => {
+          if (syn && syn.toLowerCase().indexOf(trimmed) !== -1) {
+            if (!map.has(t.label)) {
+              // Provide the canonical Term title as the suggested autocomplete value
+              map.set(t.label, {
+                termTitle: t.label,
+                matchedSynonym: syn,
+                termSetName: t.termSetName,
+                path: t.path
+              });
+            }
+          }
+        });
+      }
+    });
+
+    return Array.from(map.values()).slice(0, 8); // Limit to top 8 suggestions
+  }, [showAutocomplete, searchQuery, termStoreTerms]);
+
+  // Commit a search string into sticky committed filters (via Enter key or autocomplete click)
+  const commitSearchTerm = (term: string): void => {
+    const trimmed = term.trim();
+    if (!trimmed) return;
+    if (committedSearchFilters.indexOf(trimmed) === -1) {
+      setCommittedSearchFilters((prev) => [...prev, trimmed]);
+    }
+    setSearchQuery(''); // Clearing the input text does NOT remove the filter from the list!
+    setShowSuggestions(false);
+  };
+
+  // Keyboard handler on the search input
+  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>): void => {
+    if (e.key === 'Enter') {
+      const q = searchQuery.trim();
+      if (q) {
+        e.preventDefault();
+        commitSearchTerm(q);
+      }
+    } else if (e.key === 'Escape') {
+      setShowSuggestions(false);
+    }
+  };
+
+  // Broadcast combined filter payload whenever committedSearchFilters, searchQuery, preFilters, or activeExternalFilters change
   React.useEffect(() => {
     const tokensList: string[] = [];
 
-    if (searchQuery.trim().length > 0) {
+    // Include committed sticky search filter chips
+    committedSearchFilters.forEach((t) => {
+      if (t && tokensList.indexOf(t) === -1) {
+        tokensList.push(t);
+      }
+    });
+
+    // Also include any currently typed search query if present
+    if (searchQuery.trim().length > 0 && tokensList.indexOf(searchQuery.trim()) === -1) {
       tokensList.push(searchQuery.trim());
     }
 
     Object.keys(resolvedPreFilters).forEach((k) => {
-      tokensList.push(resolvedPreFilters[k]);
+      const v = resolvedPreFilters[k];
+      if (v && tokensList.indexOf(v) === -1) {
+        tokensList.push(v);
+      }
     });
 
     Object.keys(activeExternalFilters).forEach((k) => {
-      tokensList.push(activeExternalFilters[k]);
+      const v = activeExternalFilters[k];
+      if (v && tokensList.indexOf(v) === -1) {
+        tokensList.push(v);
+      }
     });
 
     const combinedFilterString = tokensList.join(' ');
@@ -331,7 +442,7 @@ export const DynamicFilter: React.FC<IDynamicFilterProps> = (props) => {
     prevBroadcastRef.current = combinedFilterString;
 
     const payload: IDynamicFilterPayload = {
-      searchQuery,
+      searchQuery: committedSearchFilters.length > 0 ? committedSearchFilters.join(' ') : searchQuery,
       selectedFilters: activeExternalFilters,
       preFilters: resolvedPreFilters,
       combinedFilterString,
@@ -350,9 +461,14 @@ export const DynamicFilter: React.FC<IDynamicFilterProps> = (props) => {
         }
       })
     );
-  }, [searchQuery, resolvedPreFilters, activeExternalFilters]);
+  }, [committedSearchFilters, searchQuery, resolvedPreFilters, activeExternalFilters]);
 
-  // Remove individual filter handlers
+  // Remove individual committed search filter chip
+  const handleRemoveCommittedSearchFilter = (index: number): void => {
+    setCommittedSearchFilters((prev) => prev.filter((_, idx) => idx !== index));
+  };
+
+  // Remove individual uncommitted live search filter
   const handleRemoveSearchFilter = (): void => {
     setSearchQuery('');
   };
@@ -372,14 +488,17 @@ export const DynamicFilter: React.FC<IDynamicFilterProps> = (props) => {
     });
   };
 
-  // Clear all filters
+  // Clear all filters: resets committed search chips, active search query, external filters, and dismissed pre-filters
   const handleClearAll = (): void => {
+    setCommittedSearchFilters([]);
     setSearchQuery('');
     setActiveExternalFilters({});
     setDismissedPreFilterKeys({});
+    setShowSuggestions(false);
   };
 
   const hasAnyActiveFilters =
+    committedSearchFilters.length > 0 ||
     searchQuery.trim().length > 0 ||
     Object.keys(activeExternalFilters).length > 0 ||
     Object.keys(resolvedPreFilters).length > 0;
@@ -495,7 +614,7 @@ export const DynamicFilter: React.FC<IDynamicFilterProps> = (props) => {
         </div>
 
         {/* Centre / Right Section: Search bar & Filter controls */}
-        <div className={styles.searchAndFilterCol}>
+        <div className={styles.searchAndFilterCol} style={{ position: 'relative' }}>
           <div className={styles.searchRow}>
             <Input
               className={styles.searchInput}
@@ -506,17 +625,103 @@ export const DynamicFilter: React.FC<IDynamicFilterProps> = (props) => {
                     appearance="subtle"
                     size="small"
                     icon={<DismissCircleRegular />}
-                    onClick={() => setSearchQuery('')}
-                    aria-label="Clear search"
+                    onClick={() => {
+                      setSearchQuery('');
+                      setShowSuggestions(false);
+                    }}
+                    aria-label="Clear search text"
                   />
                 ) : undefined
               }
               placeholder={searchPromptText || 'Search dashboard cards, tags, metrics...'}
               value={searchQuery}
-              onChange={(_, data) => setSearchQuery(data.value)}
+              onChange={(_, data) => {
+                setSearchQuery(data.value);
+                setShowSuggestions(data.value.trim().length >= 2);
+              }}
+              onFocus={() => {
+                if (searchQuery.trim().length >= 2) {
+                  setShowSuggestions(true);
+                }
+              }}
+              onKeyDown={handleSearchKeyDown}
               size="medium"
             />
           </div>
+
+          {/* Autocomplete Suggestions Popover Dropdown */}
+          {showSuggestions && autocompleteSuggestions.length > 0 && (
+            <div
+              style={{
+                position: 'absolute',
+                top: '42px',
+                left: 0,
+                right: 0,
+                zIndex: 1000000,
+                backgroundColor: '#FFFFFF',
+                borderRadius: tokens.borderRadiusMedium,
+                boxShadow: tokens.shadow16,
+                border: `1px solid ${tokens.colorNeutralStroke1}`,
+                padding: '4px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '2px',
+                maxHeight: '260px',
+                overflowY: 'auto'
+              }}
+            >
+              {autocompleteSuggestions.map((item, idx) => (
+                <div
+                  key={`${item.termTitle}-${idx}`}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '8px 12px',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    fontSize: '13px',
+                    color: tokens.colorNeutralForeground1,
+                    transition: 'background-color 0.15s ease'
+                  }}
+                  onMouseDown={(e) => {
+                    e.preventDefault(); // Prevent blurring input
+                    commitSearchTerm(item.termTitle);
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = '#eff6fc';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = 'transparent';
+                  }}
+                >
+                  <div style={{ display: 'flex', flexDirection: 'column' }}>
+                    <div style={{ fontWeight: 600, color: '#004578' }}>
+                      {item.termTitle}
+                    </div>
+                    {item.matchedSynonym && (
+                      <span style={{ fontSize: '11px', color: '#605e5c', fontStyle: 'italic' }}>
+                        Matches synonym: &ldquo;{item.matchedSynonym}&rdquo;
+                      </span>
+                    )}
+                  </div>
+                  {item.termSetName && (
+                    <span
+                      style={{
+                        fontSize: '11px',
+                        padding: '2px 6px',
+                        backgroundColor: '#f3f2f1',
+                        borderRadius: '4px',
+                        color: '#605e5c'
+                      }}
+                    >
+                      {item.termSetName}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
 
           {/* Active Applied Filters Chips Row */}
           {showAppliedFilters && hasAnyActiveFilters && (
@@ -525,8 +730,10 @@ export const DynamicFilter: React.FC<IDynamicFilterProps> = (props) => {
                 Filters applied:
               </Caption1>
 
-              {searchQuery.trim() && (
+              {/* Committed Sticky Search Filter Chips (Sticks upon pressing Enter) */}
+              {committedSearchFilters.map((filterText, idx) => (
                 <span
+                  key={`committed-${filterText}-${idx}`}
                   style={{
                     display: 'inline-flex',
                     alignItems: 'center',
@@ -541,13 +748,53 @@ export const DynamicFilter: React.FC<IDynamicFilterProps> = (props) => {
                   }}
                 >
                   <SearchRegular style={{ fontSize: '12px' }} />
+                  <span>{filterText}</span>
+                  <DismissRegular
+                    onClick={() => handleRemoveCommittedSearchFilter(idx)}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`Remove filter ${filterText}`}
+                    title={`Remove ${filterText}`}
+                    style={{
+                      cursor: 'pointer',
+                      fontSize: '11px',
+                      marginLeft: '2px',
+                      opacity: 0.8
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        handleRemoveCommittedSearchFilter(idx);
+                      }
+                    }}
+                  />
+                </span>
+              ))}
+
+              {/* Live Search Query Chip if user has typed something not yet committed with Enter */}
+              {searchQuery.trim() && committedSearchFilters.indexOf(searchQuery.trim()) === -1 && (
+                <span
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    padding: '2px 8px',
+                    borderRadius: '12px',
+                    backgroundColor: tokens.colorBrandBackground2,
+                    color: tokens.colorBrandForeground2,
+                    fontSize: '0.75rem',
+                    fontWeight: 500,
+                    border: `1px dashed ${tokens.colorBrandStroke2}`
+                  }}
+                  title="Press Enter to commit filter"
+                >
+                  <SearchRegular style={{ fontSize: '12px' }} />
                   <span>{searchQuery.trim()}</span>
                   <DismissRegular
                     onClick={handleRemoveSearchFilter}
                     role="button"
                     tabIndex={0}
-                    aria-label="Remove search filter"
-                    title="Remove search filter"
+                    aria-label="Remove active search text"
+                    title="Remove active search text"
                     style={{
                       cursor: 'pointer',
                       fontSize: '11px',
@@ -563,6 +810,7 @@ export const DynamicFilter: React.FC<IDynamicFilterProps> = (props) => {
                 </span>
               )}
 
+              {/* Pre-filters */}
               {Object.keys(resolvedPreFilters).map((propKey) => (
                 <span
                   key={propKey}
@@ -601,6 +849,7 @@ export const DynamicFilter: React.FC<IDynamicFilterProps> = (props) => {
                 </span>
               ))}
 
+              {/* External Filters */}
               {Object.keys(activeExternalFilters).map((filterId) => (
                 <span
                   key={filterId}
