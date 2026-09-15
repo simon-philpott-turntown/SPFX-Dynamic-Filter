@@ -110,8 +110,8 @@ export class TaxonomyService {
 
           for (const s of setsList) {
             const setName = s.localizedNames && s.localizedNames[0] ? s.localizedNames[0].name : 'Term Set';
-            // Always fetch terms for set with expand=relations,children to capture full hierarchy and parent IDs
-            const terms = await TaxonomyService._fetchTermsForSet(targetUrl, s.id, setName, groupName, headers);
+            // Always fetch terms for set hierarchically via groups/{groupId}/sets/{setId}/terms
+            const terms = await TaxonomyService._fetchTermsForSet(targetUrl, g.id, s.id, setName, groupName, headers);
             termSets.push({
               id: s.id,
               name: setName,
@@ -142,81 +142,120 @@ export class TaxonomyService {
   }
 
   /**
-   * Helper to fetch terms for a specific Term Set directly from SharePoint.
-   * In SharePoint Online REST v2.1, /terms returns root terms or flat terms with parent relationships.
+   * Helper to fetch terms hierarchically for a specific Term Set directly from SharePoint v2.1.
+   * Based on SharePoint Online v2.1 API hierarchy:
+   * Level 1 (Roots): /_api/v2.1/termStore/groups/{groupId}/sets/{setId}/terms
+   * Level 2+ (Children): /_api/v2.1/termStore/groups/{groupId}/sets/{setId}/terms/{termId}/terms
    */
   private static async _fetchTermsForSet(
     targetUrl: string,
+    groupId: string,
     setId: string,
     setName: string,
     groupName: string,
     headers: Record<string, string>
   ): Promise<ITermStoreTag[]> {
     try {
-      // 1. Fetch terms and relations in parallel
-      // In SharePoint REST v2.1, parent-child term associations are stored in /relations (relationType: 'parent')
-      // and top-level root terms can be queried via /children.
-      const termsEndpoint = `${targetUrl}/_api/v2.1/termStore/sets/${setId}/terms`;
-      const relationsEndpoint = `${targetUrl}/_api/v2.1/termStore/sets/${setId}/relations`;
-      const childrenEndpoint = `${targetUrl}/_api/v2.1/termStore/sets/${setId}/children`;
+      // 1. Fetch Level 1 (root) terms for the set under its group
+      const level1Endpoint = `${targetUrl}/_api/v2.1/termStore/groups/${groupId}/sets/${setId}/terms`;
+      const level1Resp = await fetch(level1Endpoint, { headers, credentials: 'include' });
 
-      const [termsResp, relationsResp, childrenResp] = await Promise.all([
-        fetch(termsEndpoint, { headers, credentials: 'include' }).catch(() => null),
-        fetch(relationsEndpoint, { headers, credentials: 'include' }).catch(() => null),
-        fetch(childrenEndpoint, { headers, credentials: 'include' }).catch(() => null)
-      ]);
-
-      let rawTerms: any[] = [];
-      if (termsResp && termsResp.ok) {
-        const data = await termsResp.json();
+      let rawLevel1Terms: any[] = [];
+      if (level1Resp.ok) {
+        const data = await level1Resp.json();
         if (data && Array.isArray(data.value)) {
-          rawTerms = data.value;
+          rawLevel1Terms = data.value;
         }
       }
 
-      // Build parent-child map from /relations: childId -> parentId
-      // In v2.1:
-      // relationType: 'parent' has fromTerm (child) and toTerm (parent), or setRelationType: 'parent'
-      const parentIdByChildId = new Map<string, string>();
-      if (relationsResp && relationsResp.ok) {
-        try {
-          const relData = await relationsResp.json();
-          if (relData && Array.isArray(relData.value)) {
-            relData.value.forEach((rel: any) => {
-              const relType = (rel.relationType || rel.type || '').toLowerCase();
-              if (relType === 'parent') {
-                const childId = TaxonomyService._normId(rel.fromTerm?.id || rel.fromTermId || rel.sourceId);
-                const parentId = TaxonomyService._normId(rel.toTerm?.id || rel.toTermId || rel.targetId);
-                if (childId && parentId && childId !== parentId) {
-                  parentIdByChildId.set(childId, parentId);
-                }
+      // If group-scoped path returned nothing, fallback to sets endpoint
+      if (rawLevel1Terms.length === 0) {
+        const fallbackEndpoint = `${targetUrl}/_api/v2.1/termStore/sets/${setId}/terms`;
+        const fbResp = await fetch(fallbackEndpoint, { headers, credentials: 'include' });
+        if (fbResp.ok) {
+          const fbData = await fbResp.json();
+          if (fbData && Array.isArray(fbData.value)) {
+            rawLevel1Terms = fbData.value;
+          }
+        }
+      }
+
+      // 2. Map Level 1 terms and fetch their Level 2 child terms via /terms/{termId}/terms
+      const assembledRoots: ITermStoreTag[] = [];
+
+      for (const t of rawLevel1Terms) {
+        const normId = TaxonomyService._normId(t.id);
+        let primaryLabel = 'Term';
+        const synonyms: string[] = [];
+
+        if (Array.isArray(t.labels) && t.labels.length > 0) {
+          const defaultLabelObj = t.labels.find((l: any) => l.isDefault === true);
+          primaryLabel = defaultLabelObj?.name || t.labels[0].name;
+
+          t.labels.forEach((l: any) => {
+            if (l.name && l.name !== primaryLabel && synonyms.indexOf(l.name) === -1) {
+              synonyms.push(l.name);
+            }
+          });
+        }
+
+        const currentPath = `${groupName} > ${setName} > ${primaryLabel}`;
+        const rootTag: ITermStoreTag = {
+          id: normId,
+          label: primaryLabel,
+          termSetId: setId,
+          termSetName: setName,
+          path: currentPath,
+          synonyms: synonyms.length > 0 ? synonyms : undefined,
+          children: []
+        };
+
+        // If childrenCount > 0 or by checking subterms, fetch Level 2 child terms
+        const childrenCount = typeof t.childrenCount === 'number' ? t.childrenCount : 1;
+        if (childrenCount > 0) {
+          try {
+            const childEndpoint = `${targetUrl}/_api/v2.1/termStore/groups/${groupId}/sets/${setId}/terms/${t.id}/terms`;
+            const childResp = await fetch(childEndpoint, { headers, credentials: 'include' });
+            if (childResp.ok) {
+              const childData = await childResp.json();
+              if (childData && Array.isArray(childData.value) && childData.value.length > 0) {
+                rootTag.children = childData.value.map((ct: any) => {
+                  const cNormId = TaxonomyService._normId(ct.id);
+                  let cPrimaryLabel = 'Term';
+                  const cSynonyms: string[] = [];
+
+                  if (Array.isArray(ct.labels) && ct.labels.length > 0) {
+                    const cDef = ct.labels.find((l: any) => l.isDefault === true);
+                    cPrimaryLabel = cDef?.name || ct.labels[0].name;
+                    ct.labels.forEach((l: any) => {
+                      if (l.name && l.name !== cPrimaryLabel && cSynonyms.indexOf(l.name) === -1) {
+                        cSynonyms.push(l.name);
+                      }
+                    });
+                  }
+
+                  return {
+                    id: cNormId,
+                    label: cPrimaryLabel,
+                    termSetId: setId,
+                    termSetName: setName,
+                    path: `${currentPath} > ${cPrimaryLabel}`,
+                    synonyms: cSynonyms.length > 0 ? cSynonyms : undefined,
+                    parentId: normId,
+                    children: []
+                  };
+                });
               }
-            });
+            }
+          } catch (childErr) {
+            console.warn(`[TaxonomyService] Failed to query child terms for ${primaryLabel}:`, childErr);
           }
-        } catch (relErr) {
-          console.warn(`[TaxonomyService] Error parsing relations for set ${setName}:`, relErr);
         }
+
+        assembledRoots.push(rootTag);
       }
 
-      // Root terms IDs from /children if available
-      const rootTermIds = new Set<string>();
-      if (childrenResp && childrenResp.ok) {
-        try {
-          const childData = await childrenResp.json();
-          if (childData && Array.isArray(childData.value)) {
-            childData.value.forEach((rt: any) => {
-              const rId = TaxonomyService._normId(rt.id);
-              if (rId) rootTermIds.add(rId);
-            });
-          }
-        } catch (cErr) {
-          console.warn(`[TaxonomyService] Error parsing children for set ${setName}:`, cErr);
-        }
-      }
-
-      if (rawTerms.length > 0) {
-        return TaxonomyService._parseTermsArray(rawTerms, setId, setName, groupName, undefined, undefined, parentIdByChildId, rootTermIds);
-      }
+      return assembledRoots;
     } catch (err) {
       console.warn(`[TaxonomyService] Failed to query terms for set ${setName}:`, err);
     }
