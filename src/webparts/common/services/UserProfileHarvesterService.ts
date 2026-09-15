@@ -19,14 +19,44 @@ export class UserProfileHarvesterService {
   private static _cache: IUserProfileHarvestResult | undefined;
   private static readonly STORAGE_KEY = 'SPFX_HARVESTED_USER_PROFILE_v1';
 
+  /**
+   * Helper to construct the native SharePoint userphoto.aspx endpoint using absoluteUrl.
+   */
+  public static getUserPhotoUrl(context?: WebPartContext, size: 'S' | 'M' | 'L' = 'L'): string {
+    if (!context) return '';
+    const user = context.pageContext?.user;
+    const accountIdentifier = user?.email || user?.loginName || '';
+    if (!accountIdentifier) return '';
+
+    const baseUrl = context.pageContext?.web?.absoluteUrl || window.location.origin;
+    return `${baseUrl}/_layouts/15/userphoto.aspx?size=${size}&accountname=${encodeURIComponent(accountIdentifier)}`;
+  }
+
   public static getCachedResult(context?: WebPartContext): IUserProfileHarvestResult | undefined {
-    if (this._cache) return this._cache;
+    if (this._cache) {
+      if (this._cache.photoUrl && this._cache.photoUrl.startsWith('blob:')) {
+        this._cache.photoUrl = this.getUserPhotoUrl(context, 'L');
+      }
+      return this._cache;
+    }
+
     try {
       if (typeof window !== 'undefined' && window.localStorage) {
         const raw = window.localStorage.getItem(this.STORAGE_KEY);
         if (raw) {
           const parsed = JSON.parse(raw) as IUserProfileHarvestResult;
           if (parsed && parsed.details && typeof parsed.details === 'object') {
+            // Scrub dead/stale blob: URLs from previous sessions
+            if (parsed.photoUrl && parsed.photoUrl.startsWith('blob:')) {
+              parsed.photoUrl = this.getUserPhotoUrl(context, 'L');
+              try {
+                window.localStorage.setItem(this.STORAGE_KEY, JSON.stringify(parsed));
+              } catch {
+                // Ignore storage update errors
+              }
+            } else if (!parsed.photoUrl && context) {
+              parsed.photoUrl = this.getUserPhotoUrl(context, 'L');
+            }
             this._cache = parsed;
             return parsed;
           }
@@ -39,12 +69,13 @@ export class UserProfileHarvesterService {
   }
 
   public static async harvest(context: WebPartContext): Promise<IUserProfileHarvestResult> {
-    if (this._cache && this._cache.details && Object.keys(this._cache.details).length > 6) {
-      return this._cache;
-    }
+    const defaultUserPhoto = this.getUserPhotoUrl(context, 'L');
 
     const cached = this.getCachedResult(context);
     if (cached && cached.details && Object.keys(cached.details).length > 6) {
+      if (!cached.photoUrl || cached.photoUrl.startsWith('blob:')) {
+        cached.photoUrl = defaultUserPhoto;
+      }
       this._cache = cached;
       // Continue background refresh non-blockingly if needed, but return cached immediately
     }
@@ -65,14 +96,8 @@ export class UserProfileHarvesterService {
 
     let photoUrl = cached?.photoUrl || '';
     // Prevent using stale blob: URLs that may have been stored from previous sessions
-    if (photoUrl && photoUrl.startsWith('blob:')) {
-      photoUrl = '';
-    }
-
-    const accountIdentifier = user?.email || user?.loginName || '';
-    if (!photoUrl && accountIdentifier && context?.pageContext?.web?.serverRelativeUrl) {
-      const webUrl = context.pageContext.web.serverRelativeUrl === '/' ? '' : context.pageContext.web.serverRelativeUrl;
-      photoUrl = `${webUrl}/_layouts/15/userphoto.aspx?size=L&accountname=${encodeURIComponent(accountIdentifier)}`;
+    if (!photoUrl || photoUrl.startsWith('blob:')) {
+      photoUrl = defaultUserPhoto;
     }
 
     // 1. Microsoft Graph Harvester: standard + extended corporate attributes & manager
@@ -131,7 +156,10 @@ export class UserProfileHarvesterService {
             }
           }
         } catch {
-          // Keep SharePoint photo fallback
+          // Graph photo not available or timed out: retain defaultUserPhoto
+          if (!photoUrl || photoUrl.startsWith('blob:')) {
+            photoUrl = defaultUserPhoto;
+          }
         }
       }
     } catch (graphErr) {
@@ -161,9 +189,11 @@ export class UserProfileHarvesterService {
             if (data.Title && !baseDetails.jobTitle) baseDetails.jobTitle = data.Title;
             if (data.Office && !baseDetails.officeLocation) baseDetails.officeLocation = data.Office;
 
-            // Direct PictureUrl from PeopleManager
-            if (data.PictureUrl && (!photoUrl || photoUrl.includes('userphoto.aspx'))) {
-              photoUrl = data.PictureUrl;
+            // Direct PictureUrl from PeopleManager only if valid http/https URL
+            if (data.PictureUrl && typeof data.PictureUrl === 'string' && data.PictureUrl.trim().length > 0 && !data.PictureUrl.startsWith('blob:')) {
+              if (!photoUrl || photoUrl === defaultUserPhoto) {
+                photoUrl = data.PictureUrl.trim();
+              }
             }
 
             const upsProps: Record<string, string> = {};
@@ -173,8 +203,8 @@ export class UserProfileHarvesterService {
               data.UserProfileProperties.forEach((item: { Key?: string; Value?: string }) => {
                 if (item && item.Key && item.Value && item.Value.trim() !== '') {
                   if (item.Key === 'PictureURL' || item.Key === 'PictureUrl') {
-                    if (!photoUrl || photoUrl.includes('userphoto.aspx')) {
-                      photoUrl = item.Value;
+                    if ((!photoUrl || photoUrl === defaultUserPhoto) && !item.Value.startsWith('blob:')) {
+                      photoUrl = item.Value.trim();
                     }
                     return;
                   }
@@ -207,6 +237,11 @@ export class UserProfileHarvesterService {
       }
     } catch (upsErr) {
       console.warn('[UserProfileHarvesterService] PeopleManager fetch error:', upsErr);
+    }
+
+    // Final safety check: if photoUrl is still empty or invalid, ensure defaultUserPhoto
+    if (!photoUrl || photoUrl.startsWith('blob:')) {
+      photoUrl = defaultUserPhoto;
     }
 
     const firstName = baseDetails.FirstName || baseDetails.givenName || (user?.displayName ? user.displayName.split(' ')[0] : 'there');

@@ -263,11 +263,8 @@ export default class DynamicFilterWebPart
     const isSiteAdmin = Boolean(legacyCtx?.isSiteAdmin);
     const userAccount = currentUser?.email || currentUser?.loginName || '';
     const webRelativeUrl = this.context?.pageContext?.web?.serverRelativeUrl;
-    const normalizedWebUrl = webRelativeUrl === '/' ? '' : (webRelativeUrl || '');
     const cachedPhoto = cachedProfile?.photoUrl && !cachedProfile.photoUrl.startsWith('blob:') ? cachedProfile.photoUrl : '';
-    const instantPhotoUrl = cachedPhoto || (userAccount
-      ? `${normalizedWebUrl}/_layouts/15/userphoto.aspx?size=L&accountname=${encodeURIComponent(userAccount)}`
-      : '');
+    const instantPhotoUrl = cachedPhoto || UserProfileHarvesterService.getUserPhotoUrl(this.context, 'L');
     const instantFirstName = cachedProfile?.firstName || (currentUser?.displayName ? currentUser.displayName.split(' ')[0] : 'there');
 
     this._userHarvestResult = cachedProfile || {

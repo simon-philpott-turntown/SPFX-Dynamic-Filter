@@ -1,0 +1,350 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "projectName": "spfx-fullwidth-container",
+  "description": "Full-width responsive dashboard web part supporting tabs, accordions, and custom cards/embeds for SharePoint Online.",
+  "architecture": "SPFx v1.23+ Heft Toolchain with React 17 and Microsoft Fluent UI 2 (@fluentui/react-components)",
+  "root": "d:/Playbook/spfx-fullwidth-container",
+  "modules": [
+    {
+      "name": "FullWidthContainerWebPart",
+      "path": "src/webparts/fullWidthContainer/FullWidthContainerWebPart.ts",
+      "role": "Entrypoint SPFx WebPart class managing lifecycle, theme variants, property pane, and rendering React root."
+    },
+    {
+      "name": "ThemeBridge",
+      "path": "src/webparts/fullWidthContainer/utils/themeBridge.ts",
+      "role": "Bridges SharePoint SPFx IReadonlyTheme / semanticColors to Fluent UI 2 Theme tokens for FluentProvider."
+    },
+    {
+      "name": "FullWidthContainer",
+      "path": "src/webparts/fullWidthContainer/components/FullWidthContainer.tsx",
+      "role": "Root React container component wrapping hierarchy in FluentProvider, handling layout switching, filtering, search, and user profile avatar diagnostics with Microsoft Graph properties."
+    },
+    {
+      "name": "TabsContainer",
+      "path": "src/webparts/fullWidthContainer/components/TabsContainer.tsx",
+      "role": "Fluent 2 TabList and Tab navigation view with active indicators and responsive card grid."
+    },
+    {
+      "name": "AccordionContainer",
+      "path": "src/webparts/fullWidthContainer/components/AccordionContainer.tsx",
+      "role": "Fluent 2 Accordion, AccordionItem, and AccordionHeader collapsible layout with Expand/Collapse All toolbar."
+    },
+    {
+      "name": "BlockRenderer",
+      "path": "src/webparts/fullWidthContainer/components/BlockRenderer.tsx",
+      "role": "Renders child content items using Fluent 2 Card, Badge, Button, and Key Metrics in GBP £."
+    },
+    {
+      "name": "CardEditDialog",
+      "path": "src/webparts/fullWidthContainer/components/CardEditDialog.tsx",
+      "role": "In-place Fluent UI 2 Modal Dialog for editing card type, typography (font family, font colour, title/body font sizes), inner composable items (buttons, images, videos, CTAs), icon, badge, links, and British financial metrics on canvas."
+    },
+    {
+      "name": "FloatingTextToolbar",
+      "path": "src/webparts/fullWidthContainer/components/FloatingTextToolbar.tsx",
+      "role": "Floating contextual formatting ribbon modeled after the native SharePoint Text Web Part toolbar."
+    },
+    {
+      "name": "InsertionBar",
+      "path": "src/webparts/fullWidthContainer/components/InsertionBar.tsx",
+      "role": "Hover-activated (+) insertion bar for adding content items directly onto the canvas."
+    },
+    {
+      "name": "ToolboxModal",
+      "path": "src/webparts/fullWidthContainer/components/ToolboxModal.tsx",
+      "role": "Content toolbox modal displaying Microsoft SharePoint authoring tools for insertion into cards."
+    },
+    {
+      "name": "TermStorePicker",
+      "path": "src/webparts/fullWidthContainer/components/TermStorePicker.tsx",
+      "role": "SharePoint Global Term Store taxonomy browser and interactive Fluent UI 2 tag pill selector."
+    },
+    {
+      "name": "FluentIconPicker",
+      "path": "src/webparts/fullWidthContainer/components/FluentIconPicker.tsx",
+      "role": "Visual icon picker modal with instant keyword search, categories, and icon preview."
+    },
+    {
+      "name": "RichTextEditable",
+      "path": "src/webparts/fullWidthContainer/components/RichTextEditable.tsx",
+      "role": "Inline WYSIWYG rich text editor with non-collapsing Floating Toolbar, site theme colors, brand fonts, and smart dual-mode formatting (selection vs whole block)."
+    },
+    {
+      "name": "LiveDataRenderer",
+      "path": "src/webparts/fullWidthContainer/components/LiveDataRenderer.tsx",
+      "role": "Dynamic real-time REST/Graph API text and metric renderer with connectivity status and refresh."
+    },
+    {
+      "name": "TaxonomyService",
+      "path": "src/webparts/fullWidthContainer/services/TaxonomyService.ts",
+      "role": "Service managing SharePoint Term Store taxonomy queries and metadata fallback terms."
+    },
+    {
+      "name": "LiveDataService",
+      "path": "src/webparts/fullWidthContainer/services/LiveDataService.ts",
+      "role": "Service handling dynamic REST API execution, JSONPath extraction, and formatting."
+    },
+    {
+      "name": "ContainerModels",
+      "path": "src/webparts/fullWidthContainer/models/IContainerModels.ts",
+      "role": "Type definitions for panels, tabs, items, layout configuration, and default UK datasets."
+    },
+    {
+      "name": "DragIsolation",
+      "path": "src/webparts/fullWidthContainer/utils/dragIsolation.ts",
+      "role": "Suppresses SharePoint Online native Canvas Move Web Part controller during card boundary resizing and rich text editing."
+    },
+    {
+      "name": "BrandColorPickerPopover",
+      "path": "src/webparts/fullWidthContainer/components/BrandColorPickerPopover.tsx",
+      "role": "Fluent UI 2 visual popover colour picker with categorized Turner & Townsend brand palettes, contextual Default Option swatches with accurate colour representations, active selection rings, preview swatches, and custom hex input."
+    },
+    {
+      "name": "DashboardStorageService",
+      "path": "src/webparts/fullWidthContainer/services/DashboardStorageService.ts",
+      "role": "SharePoint REST API storage service handling full dashboard package backups, versioned snapshots, cross-site portable JSON files, user prompt for library provisioning, automatic creation of Backups and Templates folders in the Dashboards library, and resilient root-library upload fallback."
+    },
+    {
+      "name": "CustomSvgIconRegistry",
+      "path": "src/webparts/fullWidthContainer/components/CustomSvgIconRegistry.tsx",
+      "role": "Pluggable registry and unified icon renderer for custom corporate SVG collections with dynamic color and background styling."
+    },
+    {
+      "name": "PropertyPaneIconField",
+      "path": "src/webparts/fullWidthContainer/components/PropertyPaneIconField.tsx",
+      "role": "Custom Property Pane field providing 24px icon preview with label and modal launcher for the full 229-icon collection."
+    },
+    {
+      "name": "TtSvgIconCollection",
+      "path": "src/webparts/fullWidthContainer/components/TtSvgIconCollection.ts",
+      "role": "Full corporate collection of 224 Turner & Townsend SVG icons with automated currentColor stroke mapping and metadata."
+    },
+    {
+      "name": "SectionEditDialog",
+      "path": "src/webparts/fullWidthContainer/components/SectionEditDialog.tsx",
+      "role": "In-place Fluent UI 2 side panel for configuring section titles, badges, icons, glyph colors, icon containers, and section background colors."
+    },
+    {
+      "name": "CardItemPropertyEditor",
+      "path": "src/webparts/fullWidthContainer/components/CardItemPropertyEditor.tsx",
+      "role": "Fluent UI 2 modal dialog providing tailored contextual property editing forms for all 14 card inner item types (including the new 'dropdown' filter type with reorderable options) with real-time live canvas syncing."
+    },
+    {
+      "name": "TermFilterBar",
+      "path": "src/webparts/fullWidthContainer/components/TermFilterBar.tsx",
+      "role": "Fluent UI 2 component rendering configurable Global Term Store filter dropdowns, dynamic term population, and reactive selection summary pill with clear controls."
+    },
+    {
+      "name": "TermFilterConfigDialog",
+      "path": "src/webparts/fullWidthContainer/components/TermFilterConfigDialog.tsx",
+      "role": "Fluent UI 2 in-place modal dialog for adding, configuring, and removing Global Term Store filter dropdowns in Edit Mode."
+    },
+    {
+      "name": "FilterButtonsRenderer",
+      "path": "src/webparts/fullWidthContainer/components/FilterButtonsRenderer.tsx",
+      "role": "Interactive pill button filters with active state highlighting and card filtering dispatch."
+    },
+    {
+      "name": "ProcessModelRenderer",
+      "path": "src/webparts/fullWidthContainer/components/ProcessModelRenderer.tsx",
+      "role": "Customisable process stage chevron flow component with configurable step count, capability badges, and URL navigation / card filtering."
+    },
+    {
+      "name": "ComposableContentSection",
+      "path": "src/webparts/fullWidthContainer/components/ComposableContentSection.tsx",
+      "role": "Composable content area for top-of-webpart and top-of-section content authoring supporting all 16 inner item types (including 'dropdown' filter and 'capabilities' mini-cards), alignment controls, insertion bars, and inline editing."
+    },
+    {
+      "name": "CapabilitiesRenderer",
+      "path": "src/webparts/fullWidthContainer/components/CapabilitiesRenderer.tsx",
+      "role": "Renders the capabilities content part: displays an editable section title with live count ('Capabilities applied here X'), styled mini-cards with title, subtitle, semantic tag badges, and action links."
+    },
+    {
+      "name": "FilterDropdownsRenderer",
+      "path": "src/webparts/fullWidthContainer/components/FilterDropdownsRenderer.tsx",
+      "role": "Renders a responsive horizontal row of multiple filter dropdowns with SharePoint Term Store resolution, multi-filter selection dispatch, active indicators, and 'Clear all' button."
+    }
+  ],
+  "recentChanges": [
+    {
+      "feature": "FEAT-041",
+      "description": "Multi-Dropdown Filter Bar: added capability to add, reorder, and configure multiple filter dropdowns alongside each other in a horizontal row (like Filter Buttons). Supports per-dropdown Term Store term sets or custom options, live selection dispatching, active indicators, and 'Clear all'.",
+      "filesModified": [
+        "src/webparts/fullWidthContainer/models/IContainerModels.ts",
+        "src/webparts/fullWidthContainer/components/FilterDropdownsRenderer.tsx",
+        "src/webparts/fullWidthContainer/components/CardItemPropertyEditor.tsx",
+        "src/webparts/fullWidthContainer/components/ComposableContentSection.tsx",
+        "src/webparts/fullWidthContainer/components/BlockRenderer.tsx",
+        "src/webparts/fullWidthContainer/components/ToolboxModal.tsx",
+        "src/webparts/fullWidthContainer/components/TabsContainer.tsx",
+        "src/webparts/fullWidthContainer/components/AccordionContainer.tsx"
+      ]
+    },
+    {
+      "feature": "FEAT-035",
+      "description": "Search bar permanently relocated to headerTopRight. In edit mode a pencil icon opens a Fluent UI 2 Popover to edit the placeholder text, persisted via onSearchPlaceholderChange.",
+      "filesModified": [
+        "src/webparts/fullWidthContainer/components/FullWidthContainer.tsx",
+        "src/webparts/fullWidthContainer/components/IFullWidthContainerProps.ts",
+        "preview/index.html"
+      ]
+    },
+    {
+      "feature": "FEAT-036",
+      "description": "New 'dropdown' ICardItemType composable item. Renders as a Fluent UI 2 Dropdown dispatching dashboard:card-filter-apply. Editable via CardItemPropertyEditor and CardEditDialog (label, placeholder, term set name, reorderable static options). Filter-host protection extended in TabsContainer and AccordionContainer.",
+      "filesModified": [
+        "src/webparts/fullWidthContainer/models/IContainerModels.ts",
+        "src/webparts/fullWidthContainer/components/ToolboxModal.tsx",
+        "src/webparts/fullWidthContainer/components/CardItemPropertyEditor.tsx",
+        "src/webparts/fullWidthContainer/components/CardEditDialog.tsx",
+        "src/webparts/fullWidthContainer/components/ComposableContentSection.tsx",
+        "src/webparts/fullWidthContainer/components/BlockRenderer.tsx",
+        "src/webparts/fullWidthContainer/components/TabsContainer.tsx",
+        "src/webparts/fullWidthContainer/components/AccordionContainer.tsx",
+        "preview/index.html"
+      ]
+    },
+    {
+      "feature": "FEAT-037",
+      "description": "Author-only user profile diagnostics inspection icon in the edit banner next to 'Save snapshot to Library'. Clicking reveals a Fluent UI 2 popover listing active pageContext.user properties and values (displayName, email, loginName, guest flags) for instant debugging.",
+      "filesModified": [
+        "src/webparts/fullWidthContainer/FullWidthContainerWebPart.ts",
+        "src/webparts/fullWidthContainer/components/FullWidthContainer.tsx",
+        "src/webparts/fullWidthContainer/components/IFullWidthContainerProps.ts"
+      ]
+    },
+    {
+      "feature": "FEAT-038",
+      "description": "Process model property modal redesign: fixed clipped buttons by enforcing a pinned flexbox footer with sticky positioning and scrolling dialog content; added rich text editing micro-toolbar (bold, italic, list, eraser) for stage descriptions; introduced a segmented interactivity selector clearly separating 'Filter Cards' and 'Open Web Link' with helper callouts; humanised dialog title to 'Configure the process model'; and provided dedicated taxonomy group/term set picker for composable dropdown filters.",
+      "filesModified": [
+        "src/webparts/fullWidthContainer/models/IContainerModels.ts",
+        "src/webparts/fullWidthContainer/FullWidthContainerWebPart.ts",
+        "src/webparts/fullWidthContainer/components/FullWidthContainer.tsx",
+        "src/webparts/fullWidthContainer/components/CardItemPropertyEditor.tsx",
+        "src/webparts/fullWidthContainer/components/ComposableContentSection.tsx"
+      ]
+    },
+    {
+      "feature": "FEAT-039",
+      "description": "Capabilities Card Content Part: added 'capabilities' item type with dynamic count header ('Capabilities applied here X - [secondary label]'), responsive mini-cards layout, tag badge styling with Turner & Townsend semantic colors, and deep configuration options in CardItemPropertyEditor.",
+      "filesModified": [
+        "src/webparts/fullWidthContainer/models/IContainerModels.ts",
+        "src/webparts/fullWidthContainer/components/CapabilitiesRenderer.tsx",
+        "src/webparts/fullWidthContainer/components/ToolboxModal.tsx",
+        "src/webparts/fullWidthContainer/components/BlockRenderer.tsx",
+        "src/webparts/fullWidthContainer/components/ComposableContentSection.tsx",
+        "src/webparts/fullWidthContainer/components/CardItemPropertyEditor.tsx",
+        "src/webparts/fullWidthContainer/components/CardEditDialog.tsx"
+      ]
+    },
+    {
+      "feature": "FEAT-040",
+      "description": "User Profile Graph attributes (jobTitle, officeLocation), isSiteAdmin detection, and dynamic user avatar photo with initials fallback.",
+      "filesModified": [
+        "src/webparts/fullWidthContainer/FullWidthContainerWebPart.ts",
+        "src/webparts/fullWidthContainer/components/IFullWidthContainerProps.ts",
+        "src/webparts/fullWidthContainer/components/FullWidthContainer.tsx"
+      ]
+    },
+    {
+      "feature": "FEAT-041",
+      "description": "Multi-Dropdown Filter Bar item allowing multiple reorderable dropdown filters positioned horizontally side-by-side with multi-token filtering.",
+      "filesModified": [
+        "src/webparts/fullWidthContainer/models/IContainerModels.ts",
+        "src/webparts/fullWidthContainer/components/FilterDropdownsRenderer.tsx",
+        "src/webparts/fullWidthContainer/components/CardItemPropertyEditor.tsx",
+        "src/webparts/fullWidthContainer/components/ComposableContentSection.tsx",
+        "src/webparts/fullWidthContainer/components/BlockRenderer.tsx",
+        "src/webparts/fullWidthContainer/components/ToolboxModal.tsx",
+        "src/webparts/fullWidthContainer/components/TabsContainer.tsx",
+        "src/webparts/fullWidthContainer/components/AccordionContainer.tsx"
+      ]
+    },
+    {
+      "feature": "FEAT-042",
+      "description": "Modal Dialogs and Panels Theme Hydration and Solid Surfaces: wraps all portaled trees in FluentProvider theme={webLightTheme} to hydrate Griffel tokens and enforces solid white surface backgrounds (#FFFFFF !important) across all property panels and modal dialogs.",
+      "filesModified": [
+        "src/webparts/fullWidthContainer/components/CardEditDialog.tsx",
+        "src/webparts/fullWidthContainer/components/SectionEditDialog.tsx",
+        "src/webparts/fullWidthContainer/components/ToolboxModal.tsx",
+        "src/webparts/fullWidthContainer/components/FluentAssetExplorerDialog.tsx",
+        "src/webparts/fullWidthContainer/components/TermFilterConfigDialog.tsx",
+        "src/webparts/fullWidthContainer/components/BrandColorPickerPopover.tsx"
+      ]
+    },
+    {
+      "feature": "FEAT-043",
+      "description": "Dynamic Filter Web Part (DynamicFilterWebPart): central SPFx Dynamic Data web part featuring greeting (Good morning/afternoon/evening), full-height profile inspection popover, search bar, active filter tags with Clear All, and user profile dynamic pre-filtering.",
+      "filesModified": [
+        "config/config.json",
+        "src/webparts/dynamicFilter/DynamicFilterWebPart.manifest.json",
+        "src/webparts/dynamicFilter/DynamicFilterWebPart.ts",
+        "src/webparts/dynamicFilter/components/DynamicFilter.tsx",
+        "src/webparts/dynamicFilter/components/IDynamicFilterProps.ts",
+        "src/webparts/common/models/IDynamicFilterTypes.ts",
+        "src/webparts/common/services/UserProfileHarvesterService.ts"
+      ]
+    },
+    {
+      "feature": "FEAT-044",
+      "description": "Content Section Toggle Layout: Segmented toggle presentation mode alongside Tabs and Accordion for multi-section content, working across any column width and full-width containers.",
+      "filesModified": [
+        "src/webparts/fullWidthContainer/models/IContainerModels.ts",
+        "src/webparts/fullWidthContainer/components/ToggleContainer.tsx",
+        "src/webparts/fullWidthContainer/components/FullWidthContainer.tsx",
+        "src/webparts/fullWidthContainer/FullWidthContainerWebPart.ts"
+      ]
+    },
+    {
+      "feature": "FEAT-045",
+      "description": "Dynamic Filter Greeting and Taxonomy Synonym Pre-Filtering: Popover Admin badge and elevation restoration, greeting message configuration with time-of-day toggle and FirstName append, individual property checkboxes with live user examples, Term Store synonym resolution to canonical Term Names, and simplified active filter chips display.",
+      "filesModified": [
+        "src/webparts/dynamicFilter/DynamicFilterWebPart.ts",
+        "src/webparts/dynamicFilter/components/DynamicFilter.tsx",
+        "src/webparts/dynamicFilter/components/PropertyPaneTermPickerField.tsx",
+        "src/webparts/dynamicFilter/components/IDynamicFilterProps.ts",
+        "src/webparts/common/models/IDynamicFilterTypes.ts",
+        "src/webparts/fullWidthContainer/services/TaxonomyService.ts",
+        "src/webparts/fullWidthContainer/models/IContainerModels.ts"
+      ]
+    },
+    {
+      "feature": "FEAT-046",
+      "description": "Dynamic Filter Term Store Explorer and Sticky Search Autocomplete: Collapsible hierarchical taxonomy tree in Term Store Explorer with 'Select term parent' bottom-right button; persistent Enter-key search filter chips that stick when input text is cleared; 2-char Term Store autocomplete suggestions resolving synonyms directly to canonical Term titles.",
+      "filesModified": [
+        "src/webparts/dynamicFilter/components/DynamicFilter.tsx",
+        "src/webparts/dynamicFilter/components/PropertyPaneTermPickerField.tsx",
+        "src/webparts/fullWidthContainer/services/TaxonomyService.ts"
+      ]
+    },
+    {
+      "feature": "FEAT-047",
+      "description": "Scoped Group and Single-Call Term Set Hierarchy: Directly targets primary designated Term Group (48666d46-190a-4511-80e8-9e3c76faedf1) and queries all terms per set with expand=parent,children in a single request, eliminating all 404 HTTP requests on leaf terms.",
+      "filesModified": [
+        "src/webparts/fullWidthContainer/services/TaxonomyService.ts"
+      ]
+    },
+    {
+      "feature": "FEAT-048",
+      "description": "Target Term Set getlegacychildren and Deep Synonym Resolution: Scoped queries to 'Our business' Term Set (930372f6-3b00-46f8-8e63-4b40edb8fd22) via REST v2.1 getlegacychildren, guarded recursive child calls by childrenCount > 0 to eliminate 404s, interactive multi-tier Term Store Explorer picker with parent/leaf node selection, and recursive deep synonym resolution traversing full descendant subtrees.",
+      "filesModified": [
+        "src/webparts/fullWidthContainer/services/TaxonomyService.ts",
+        "src/webparts/dynamicFilter/components/PropertyPaneTermPickerField.tsx",
+        "src/webparts/dynamicFilter/components/DynamicFilter.tsx"
+      ]
+    },
+    {
+      "feature": "FEAT-049",
+      "description": "Multi-Tier Profile Photo Harvester: Serializes Microsoft Graph /me/photo/$value binary blobs to persistent Base64 Data URLs, sanitizes dead blob: URLs at the getCachedResult localStorage gate, extracts valid PictureURL from PeopleManager GetMyProperties, cascades seamlessly to canonical absoluteUrl _layouts/15/userphoto.aspx?size=L, and unifies profile harvesting across DynamicFilterWebPart and FullWidthContainerWebPart.",
+      "filesModified": [
+        "src/webparts/common/services/UserProfileHarvesterService.ts",
+        "src/webparts/dynamicFilter/DynamicFilterWebPart.ts",
+        "src/webparts/dynamicFilter/components/DynamicFilter.tsx",
+        "src/webparts/fullWidthContainer/FullWidthContainerWebPart.ts"
+      ]
+    }
+  ]
+}
+
+
