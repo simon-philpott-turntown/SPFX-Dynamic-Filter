@@ -264,8 +264,9 @@ export default class DynamicFilterWebPart
     const userAccount = currentUser?.email || currentUser?.loginName || '';
     const webRelativeUrl = this.context?.pageContext?.web?.serverRelativeUrl;
     const normalizedWebUrl = webRelativeUrl === '/' ? '' : (webRelativeUrl || '');
-    const instantPhotoUrl = cachedProfile?.photoUrl || (userAccount
-      ? `${normalizedWebUrl}/_layouts/15/userphoto.aspx?size=M&accountname=${encodeURIComponent(userAccount)}`
+    const cachedPhoto = cachedProfile?.photoUrl && !cachedProfile.photoUrl.startsWith('blob:') ? cachedProfile.photoUrl : '';
+    const instantPhotoUrl = cachedPhoto || (userAccount
+      ? `${normalizedWebUrl}/_layouts/15/userphoto.aspx?size=L&accountname=${encodeURIComponent(userAccount)}`
       : '');
     const instantFirstName = cachedProfile?.firstName || (currentUser?.displayName ? currentUser.displayName.split(' ')[0] : 'there');
 

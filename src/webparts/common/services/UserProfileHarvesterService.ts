@@ -64,10 +64,15 @@ export class UserProfileHarvesterService {
     };
 
     let photoUrl = cached?.photoUrl || '';
+    // Prevent using stale blob: URLs that may have been stored from previous sessions
+    if (photoUrl && photoUrl.startsWith('blob:')) {
+      photoUrl = '';
+    }
+
     const accountIdentifier = user?.email || user?.loginName || '';
     if (!photoUrl && accountIdentifier && context?.pageContext?.web?.serverRelativeUrl) {
       const webUrl = context.pageContext.web.serverRelativeUrl === '/' ? '' : context.pageContext.web.serverRelativeUrl;
-      photoUrl = `${webUrl}/_layouts/15/userphoto.aspx?size=M&accountname=${encodeURIComponent(accountIdentifier)}`;
+      photoUrl = `${webUrl}/_layouts/15/userphoto.aspx?size=L&accountname=${encodeURIComponent(accountIdentifier)}`;
     }
 
     // 1. Microsoft Graph Harvester: standard + extended corporate attributes & manager
@@ -109,7 +114,7 @@ export class UserProfileHarvesterService {
 
         try {
           const timeoutPromise = new Promise<Blob>((_, reject) =>
-            setTimeout(() => reject(new Error('Photo fetch timeout')), 1500)
+            setTimeout(() => reject(new Error('Photo fetch timeout')), 2500)
           );
           const photoPromise: Promise<Blob> = graphClient
             .api('/me/photo/$value')
@@ -119,10 +124,14 @@ export class UserProfileHarvesterService {
           const photoBlob = await Promise.race([photoPromise, timeoutPromise]);
 
           if (photoBlob && photoBlob.size > 0) {
-            photoUrl = URL.createObjectURL(photoBlob);
+            // Convert to base64 Data URL for persistent localStorage durability across page loads
+            const base64Data = await this._blobToBase64(photoBlob);
+            if (base64Data && base64Data.length > 50) {
+              photoUrl = base64Data;
+            }
           }
         } catch {
-          // Keep SharePoint userphoto fallback
+          // Keep SharePoint photo fallback
         }
       }
     } catch (graphErr) {
@@ -152,14 +161,26 @@ export class UserProfileHarvesterService {
             if (data.Title && !baseDetails.jobTitle) baseDetails.jobTitle = data.Title;
             if (data.Office && !baseDetails.officeLocation) baseDetails.officeLocation = data.Office;
 
+            // Direct PictureUrl from PeopleManager
+            if (data.PictureUrl && (!photoUrl || photoUrl.includes('userphoto.aspx'))) {
+              photoUrl = data.PictureUrl;
+            }
+
             const upsProps: Record<string, string> = {};
             if (data.WorkPhone) upsProps.workPhone = data.WorkPhone;
 
             if (Array.isArray(data.UserProfileProperties)) {
               data.UserProfileProperties.forEach((item: { Key?: string; Value?: string }) => {
                 if (item && item.Key && item.Value && item.Value.trim() !== '') {
+                  if (item.Key === 'PictureURL' || item.Key === 'PictureUrl') {
+                    if (!photoUrl || photoUrl.includes('userphoto.aspx')) {
+                      photoUrl = item.Value;
+                    }
+                    return;
+                  }
+
                   const technicalSkip = [
-                    'SPS-FeedIdentifier', 'msOnline-ObjectId', 'PictureURL',
+                    'SPS-FeedIdentifier', 'msOnline-ObjectId',
                     'SIPAddress', 'SPS-PrivacyActivity', 'SPS-PrivacyPeople', 'SPS-DistinguishedName'
                   ];
                   if (technicalSkip.indexOf(item.Key) === -1) {
@@ -209,5 +230,25 @@ export class UserProfileHarvesterService {
     }
 
     return result;
+  }
+
+  /**
+   * Serializes a binary image Blob into a Base64 Data URL for persistent storage in localStorage.
+   */
+  private static async _blobToBase64(blob: Blob): Promise<string> {
+    return new Promise((resolve) => {
+      try {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          resolve(typeof reader.result === 'string' ? reader.result : '');
+        };
+        reader.onerror = () => {
+          resolve('');
+        };
+        reader.readAsDataURL(blob);
+      } catch {
+        resolve('');
+      }
+    });
   }
 }
