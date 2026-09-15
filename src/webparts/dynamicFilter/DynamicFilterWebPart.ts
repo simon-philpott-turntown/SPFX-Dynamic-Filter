@@ -2,7 +2,7 @@
  * @file DynamicFilterWebPart.ts
  * @description Central SPFx Dynamic Data Web Part capturing search & filter values,
  * broadcasting them to connected dashboard web parts, showing a time-of-day greeting,
- * and performing user profile pre-filtering.
+ * and performing user profile pre-filtering. Updated: 2026-09-15.
  */
 
 import * as React from 'react';
