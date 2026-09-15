@@ -24,6 +24,12 @@ export interface ITermSet {
 
 export class TaxonomyService {
   /**
+   * Primary target Term Set GUID for 'Our business' in Turner & Townsend Term Store taxonomy lookup.
+   * Scopes queries directly to avoid querying unneeded groups and prevents 404 child term errors.
+   */
+  public static readonly OUR_BUSINESS_SET_ID: string = '930372f6-3b00-46f8-8e63-4b40edb8fd22';
+
+  /**
    * Loaded live groups from SharePoint Online.
    * Initialised empty: strictly populated from live SharePoint Term Store.
    */
@@ -34,10 +40,12 @@ export class TaxonomyService {
 
   /**
    * Queries the live SharePoint Online Term Store v2.1 REST API.
-   * 1. Fetches all Term Groups: `/_api/v2.1/termStore/groups?$expand=sets($expand=terms)`
-   * 2. If a group's sets are not expanded inline, queries `/_api/v2.1/termStore/groups/{groupId}/sets`
-   * 3. For each set, queries its terms `/_api/v2.1/termStore/sets/{setId}/terms`
-   * 4. Recursively resolves child terms and synonyms.
+   * 1. Targets the designated 'Our business' Term Set:
+   *    `/_api/v2.1/termStore/termSets/930372f6-3b00-46f8-8e63-4b40edb8fd22/getlegacychildren`
+   * 2. For each root category (AI, Content categories, Our capabilities, Our regions, Our sectors, Our segments, Our teams),
+   *    if childrenCount > 0, recursively calls:
+   *    `/_api/v2.1/termStore/termSets/930372f6-3b00-46f8-8e63-4b40edb8fd22/terms/{termId}/getlegacychildren`
+   * 3. Completely eliminates leaf-term 404 errors and preserves multi-tier hierarchy.
    */
   public static async initializeFromSharePoint(siteUrl?: string, forceRefresh: boolean = false): Promise<void> {
     if (this._isFetched && !forceRefresh) return;
@@ -60,75 +68,70 @@ export class TaxonomyService {
           'Content-Type': 'application/json'
         };
 
-        // Step 1: Query all term groups with sets expanded
-        const groupsEndpoint = `${targetUrl}/_api/v2.1/termStore/groups?$expand=sets`;
-        const groupsResp = await fetch(groupsEndpoint, {
-          headers,
-          credentials: 'include'
-        });
-
-        if (!groupsResp.ok) {
-          console.warn(`[TaxonomyService] Failed to query term groups (${groupsResp.status}):`, await groupsResp.text());
-          return;
-        }
-
-        const groupsData = await groupsResp.json();
-        if (!groupsData || !Array.isArray(groupsData.value)) {
-          return;
-        }
-
         const liveGroups: ITermGroup[] = [];
 
-        for (const g of groupsData.value as Array<{
-          id: string;
-          displayName?: string;
-          name?: string;
-          sets?: Array<{
-            id: string;
-            localizedNames?: Array<{ name: string }>;
-          }>;
-        }>) {
-          const groupName = g.displayName || g.name || 'Group';
-          let termSets: ITermSet[] = [];
+        // Fetch root terms of 'Our business' set using getlegacychildren
+        const rootCategories = await TaxonomyService._fetchLegacyChildren(
+          targetUrl,
+          TaxonomyService.OUR_BUSINESS_SET_ID,
+          'Our business',
+          undefined,
+          headers
+        );
 
-          // Query sets for this group
-          let setsList = Array.isArray(g.sets) && g.sets.length > 0 ? g.sets : [];
-          if (setsList.length === 0) {
-            try {
-              const setsEndpoint = `${targetUrl}/_api/v2.1/termStore/groups/${g.id}/sets`;
-              const setsResp = await fetch(setsEndpoint, { headers, credentials: 'include' });
-              if (setsResp.ok) {
-                const setsData = await setsResp.json();
-                if (setsData && Array.isArray(setsData.value)) {
-                  setsList = setsData.value;
-                }
-              }
-            } catch (setErr) {
-              console.warn(`[TaxonomyService] Error fetching sets for group ${groupName}:`, setErr);
-            }
-          }
+        if (rootCategories && rootCategories.length > 0) {
+          // Represent each Tier 1 category (Our teams, Our sectors, Our capabilities, etc.)
+          // as a distinct selectable Term Set within the 'Our business' group
+          const termSets: ITermSet[] = rootCategories.map((cat) => ({
+            id: cat.id,
+            name: cat.label,
+            groupId: TaxonomyService.OUR_BUSINESS_SET_ID,
+            groupName: 'Our business',
+            terms: cat.children && cat.children.length > 0 ? cat.children : [cat]
+          }));
 
-          for (const s of setsList) {
-            const setName = s.localizedNames && s.localizedNames[0] ? s.localizedNames[0].name : 'Term Set';
-            // Always fetch terms for set hierarchically via groups/{groupId}/sets/{setId}/terms
-            const terms = await TaxonomyService._fetchTermsForSet(targetUrl, g.id, s.id, setName, groupName, headers);
-            termSets.push({
-              id: s.id,
-              name: setName,
-              groupId: g.id,
-              groupName: groupName,
-              terms: terms
-            });
-          }
+          // Also include the top-level 'Our business' set containing all root categories
+          termSets.unshift({
+            id: TaxonomyService.OUR_BUSINESS_SET_ID,
+            name: 'Our business',
+            groupId: TaxonomyService.OUR_BUSINESS_SET_ID,
+            groupName: 'Our business',
+            terms: rootCategories
+          });
 
           liveGroups.push({
-            id: g.id,
-            name: groupName,
+            id: TaxonomyService.OUR_BUSINESS_SET_ID,
+            name: 'Our business',
             termSets: termSets
           });
         }
 
-        // Exclusively assign live groups returned from the tenant Term Store
+        // Fallback: If Our business set failed or returned no categories, fallback to generic /termSets query
+        if (liveGroups.length === 0) {
+          try {
+            const fallbackSetsUrl = `${targetUrl}/_api/v2.1/termStore/termSets/${TaxonomyService.OUR_BUSINESS_SET_ID}`;
+            const fbResp = await fetch(fallbackSetsUrl, { headers, credentials: 'include' });
+            if (fbResp.ok) {
+              const fbData = await fbResp.json();
+              const setName = fbData.localizedNames && fbData.localizedNames[0] ? fbData.localizedNames[0].name : (fbData.name || 'Our business');
+              liveGroups.push({
+                id: TaxonomyService.OUR_BUSINESS_SET_ID,
+                name: 'Our business',
+                termSets: [{
+                  id: TaxonomyService.OUR_BUSINESS_SET_ID,
+                  name: setName,
+                  groupId: TaxonomyService.OUR_BUSINESS_SET_ID,
+                  groupName: 'Our business',
+                  terms: rootCategories
+                }]
+              });
+            }
+          } catch (fbErr) {
+            console.warn('[TaxonomyService] Fallback set fetch error:', fbErr);
+          }
+        }
+
+        // Assign live groups returned from the tenant Term Store
         this._cachedGroups = liveGroups;
       } catch (err) {
         console.error('[TaxonomyService] Live Term Store fetch error:', err);
@@ -142,48 +145,35 @@ export class TaxonomyService {
   }
 
   /**
-   * Helper to fetch terms hierarchically for a specific Term Set directly from SharePoint v2.1.
-   * Based on SharePoint Online v2.1 API hierarchy:
-   * Level 1 (Roots): /_api/v2.1/termStore/groups/{groupId}/sets/{setId}/terms
-   * Level 2+ (Children): /_api/v2.1/termStore/groups/{groupId}/sets/{setId}/terms/{termId}/terms
+   * Recursively fetches child terms for a set or term using SharePoint v2.1 getlegacychildren endpoint.
+   * Only calls child endpoints if childrenCount > 0, completely avoiding 404 Not Found errors on leaf nodes.
    */
-  private static async _fetchTermsForSet(
+  private static async _fetchLegacyChildren(
     targetUrl: string,
-    groupId: string,
     setId: string,
     setName: string,
-    groupName: string,
-    headers: Record<string, string>
+    parentTermId: string | undefined,
+    headers: Record<string, string>,
+    parentPath?: string
   ): Promise<ITermStoreTag[]> {
     try {
-      // 1. Fetch Level 1 (root) terms for the set under its group
-      const level1Endpoint = `${targetUrl}/_api/v2.1/termStore/groups/${groupId}/sets/${setId}/terms`;
-      const level1Resp = await fetch(level1Endpoint, { headers, credentials: 'include' });
+      const endpoint = parentTermId
+        ? `${targetUrl}/_api/v2.1/termStore/termSets/${setId}/terms/${parentTermId}/getlegacychildren`
+        : `${targetUrl}/_api/v2.1/termStore/termSets/${setId}/getlegacychildren`;
 
-      let rawLevel1Terms: any[] = [];
-      if (level1Resp.ok) {
-        const data = await level1Resp.json();
-        if (data && Array.isArray(data.value)) {
-          rawLevel1Terms = data.value;
-        }
+      const resp = await fetch(endpoint, { headers, credentials: 'include' });
+      if (!resp.ok) {
+        return [];
       }
 
-      // If group-scoped path returned nothing, fallback to sets endpoint
-      if (rawLevel1Terms.length === 0) {
-        const fallbackEndpoint = `${targetUrl}/_api/v2.1/termStore/sets/${setId}/terms`;
-        const fbResp = await fetch(fallbackEndpoint, { headers, credentials: 'include' });
-        if (fbResp.ok) {
-          const fbData = await fbResp.json();
-          if (fbData && Array.isArray(fbData.value)) {
-            rawLevel1Terms = fbData.value;
-          }
-        }
+      const data = await resp.json();
+      if (!data || !Array.isArray(data.value) || data.value.length === 0) {
+        return [];
       }
 
-      // 2. Map Level 1 terms and fetch their Level 2 child terms via /terms/{termId}/terms
-      const assembledRoots: ITermStoreTag[] = [];
+      const tags: ITermStoreTag[] = [];
 
-      for (const t of rawLevel1Terms) {
+      for (const t of data.value) {
         const normId = TaxonomyService._normId(t.id);
         let primaryLabel = 'Term';
         const synonyms: string[] = [];
@@ -199,67 +189,47 @@ export class TaxonomyService {
           });
         }
 
-        const currentPath = `${groupName} > ${setName} > ${primaryLabel}`;
-        const rootTag: ITermStoreTag = {
+        const currentPath = parentPath
+          ? `${parentPath} > ${primaryLabel}`
+          : `${setName} > ${primaryLabel}`;
+
+        const termTag: ITermStoreTag = {
           id: normId,
           label: primaryLabel,
           termSetId: setId,
           termSetName: setName,
           path: currentPath,
           synonyms: synonyms.length > 0 ? synonyms : undefined,
+          parentId: parentTermId ? TaxonomyService._normId(parentTermId) : undefined,
           children: []
         };
 
-        // If childrenCount > 0 or by checking subterms, fetch Level 2 child terms
-        const childrenCount = typeof t.childrenCount === 'number' ? t.childrenCount : 1;
+        // Recursively fetch subterms ONLY if childrenCount > 0
+        const childrenCount = typeof t.childrenCount === 'number' ? t.childrenCount : 0;
         if (childrenCount > 0) {
           try {
-            const childEndpoint = `${targetUrl}/_api/v2.1/termStore/groups/${groupId}/sets/${setId}/terms/${t.id}/terms`;
-            const childResp = await fetch(childEndpoint, { headers, credentials: 'include' });
-            if (childResp.ok) {
-              const childData = await childResp.json();
-              if (childData && Array.isArray(childData.value) && childData.value.length > 0) {
-                rootTag.children = childData.value.map((ct: any) => {
-                  const cNormId = TaxonomyService._normId(ct.id);
-                  let cPrimaryLabel = 'Term';
-                  const cSynonyms: string[] = [];
-
-                  if (Array.isArray(ct.labels) && ct.labels.length > 0) {
-                    const cDef = ct.labels.find((l: any) => l.isDefault === true);
-                    cPrimaryLabel = cDef?.name || ct.labels[0].name;
-                    ct.labels.forEach((l: any) => {
-                      if (l.name && l.name !== cPrimaryLabel && cSynonyms.indexOf(l.name) === -1) {
-                        cSynonyms.push(l.name);
-                      }
-                    });
-                  }
-
-                  return {
-                    id: cNormId,
-                    label: cPrimaryLabel,
-                    termSetId: setId,
-                    termSetName: setName,
-                    path: `${currentPath} > ${cPrimaryLabel}`,
-                    synonyms: cSynonyms.length > 0 ? cSynonyms : undefined,
-                    parentId: normId,
-                    children: []
-                  };
-                });
-              }
-            }
+            const nestedChildren = await TaxonomyService._fetchLegacyChildren(
+              targetUrl,
+              setId,
+              setName,
+              t.id,
+              headers,
+              currentPath
+            );
+            termTag.children = nestedChildren;
           } catch (childErr) {
-            console.warn(`[TaxonomyService] Failed to query child terms for ${primaryLabel}:`, childErr);
+            console.warn(`[TaxonomyService] Error querying children for ${primaryLabel}:`, childErr);
           }
         }
 
-        assembledRoots.push(rootTag);
+        tags.push(termTag);
       }
 
-      return assembledRoots;
+      return tags;
     } catch (err) {
-      console.warn(`[TaxonomyService] Failed to query terms for set ${setName}:`, err);
+      console.warn(`[TaxonomyService] Error in _fetchLegacyChildren for parent ${parentTermId || 'root'}:`, err);
+      return [];
     }
-    return [];
   }
 
   /**
